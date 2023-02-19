@@ -1,18 +1,20 @@
 # > Imports
+# # Standard Library
+import html
 
 # Third Party
 from convokit import Corpus, download
 import pandas as pd
 
 
-def load_reddit_corpus(output_path: str = ".cache/"):
+def load_reddit_corpus(output_path: str = ".cache/") -> pd.DataFrame:
     """
     Load the Reddit Corpus and return it as a Pandas DataFrame.
 
     Returns
     -------
-    pd.DataFrame : The Reddit Corpus as a Pandas DataFrame.
-
+    pd.DataFrame
+        The Reddit Corpus as a Pandas DataFrame.
     """
     # Download the corpus
     corpus = Corpus(
@@ -37,7 +39,7 @@ def load_reddit_corpus(output_path: str = ".cache/"):
     return corpus
 
 
-def preprocess(df: pd.DataFrame, data_source: str = "reddit"):
+def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
     """
     Preprocess the given DataFrame based on the data source.
 
@@ -50,8 +52,8 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit"):
 
     Returns
     -------
-    pd.DataFrame : The preprocessed DataFrame.
-
+    pd.DataFrame
+        The preprocessed DataFrame.
     """
     if data_source == "reddit":
         # Replace mentions with the "[MENTION]" token
@@ -59,30 +61,38 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit"):
             r"\/?u\/[A-Za-z0-9_-]+|\/?r\/[A-Za-z0-9_]+", "[MENTION]",
             regex=True, case=False)
 
-        # Replace all URLs with the "[URL]" token
-        df["text"] = df["text"].str.replace(
-            r"(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
-            "[URL]", regex=True, case=False
-        )
-        # Also do the same for URLs in parentheses
+        # Replace all the URLs in parentheses with the "[URL]" token
         df["text"] = df["text"].str.replace(
             r"\((https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
             "([URL])", regex=True, case=False
         )
+        # And replace all the URLs not in parentheses with the "[URL]" token
+        df["text"] = df["text"].str.replace(
+            r"(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
+            "[URL]", regex=True, case=False
+        )
+
+        # Remove all RemindMe! comments
+        df = df.drop(df[df["text"].str.lower().str.contains(
+            r"!?remindme!?", regex=True, case=False)].index)
 
         # Remove all invalid utterances
         df = df.drop(df[df["text"].str.strip().str.lower().isin(
             ["[ deleted ]", "[deleted]", "[ removed ]", "[removed]",
-             "[mention]", "[url]", ""])].index
+             "[mention]", "[url]", "[mention] [url]", "[url] [mention]", ""])]
+            .index
         )
 
         # Remove all utterances from users named "[deleted]"
         df = df.drop(df[df["author_id"].str.lower() == "[deleted]"].index)
 
+    # Unescape the HTML entities
+    df["text"] = df["text"].apply(html.unescape)
+
     return df
 
 
-def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit"):
+def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit") -> pd.DataFrame:
     """
     Create a subset of the given DataFrame.
 
@@ -97,8 +107,8 @@ def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit"):
 
     Returns
     -------
-    pd.DataFrame : The subset of the given DataFrame.
-
+    pd.DataFrame
+        The subset of the given DataFrame.
     """
     # Create a subset of the DataFrame
     # Count the number of groups
@@ -120,7 +130,7 @@ def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit"):
     return df2
 
 
-def load_data(path: str):
+def load_data(path: str) -> pd.DataFrame:
     """
     Load the DataFrame from the given path.
 
@@ -139,7 +149,7 @@ def load_data(path: str):
 
 def pipeline(data_source: str = "reddit",
              output_path: str = None,
-             cache_path: str = ".cache/"):
+             cache_path: str = ".cache/") -> pd.DataFrame:
     """
     Run the preprocessing pipeline on the given DataFrame.
 
@@ -152,8 +162,8 @@ def pipeline(data_source: str = "reddit",
 
     Returns
     -------
-    pd.DataFrame : The preprocessed DataFrame.
-
+    pd.DataFrame
+        The preprocessed DataFrame.
     """
 
     print("Loading data...")

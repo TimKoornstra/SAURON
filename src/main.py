@@ -2,11 +2,12 @@
 
 # > Imports
 # Standard Library
-import os
 import argparse
+import os
 
 # Local
 from data import pipeline, load_data
+from semantics import paraphrase_mining
 
 
 def add_arguments(parser):
@@ -54,4 +55,5 @@ if __name__ == '__main__':
                       output_path=args.output_path,
                       cache_path=args.cache_path)
 
-    print(df.head())
+    # Test the paraphrase mining
+    paraphrase_mining(df.iloc[:50000])
