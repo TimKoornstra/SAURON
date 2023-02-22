@@ -8,6 +8,7 @@ import os
 # Local
 from data import pipeline, load_data
 from semantics import paraphrase_mining
+from pairings import split_data, create_pairings
 
 
 def add_arguments(parser):
@@ -55,5 +56,24 @@ if __name__ == '__main__':
                       output_path=args.output_path,
                       cache_path=args.cache_path)
 
-    # Test the paraphrase mining
-    paraphrase_mining(df.iloc[:50000])
+    # Split the data into train, validation, and test sets
+    train, val, test = split_data(df[:5000])
+
+    # Check that the author_id's are non-overlapping
+    assert len(set(train["author_id"]).intersection(
+        set(val["author_id"]))) == 0
+
+    # Create the pairings
+    train_pairings = create_pairings(train, semantic_range=(0.8, 1.0))
+
+    # Show some example pairings from the List[Tuple[str,str,int]] format
+    print("Example pairings:")
+    for i in range(5):
+        print(f"Pairing {i}: {train_pairings[i]}")
+
+    # Count the number of positive and negative examples
+    n_positive = sum([1 for _, _, label in train_pairings if label == 1])
+    n_negative = sum([1 for _, _, label in train_pairings if label == 0])
+
+    print(f"Number of positive examples: {n_positive}")
+    print(f"Number of negative examples: {n_negative}")

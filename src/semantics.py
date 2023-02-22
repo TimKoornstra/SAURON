@@ -62,7 +62,8 @@ def paraphrase_mining(data: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The data with the paraphrases added.
+        A DataFrame with the IDs of the sentences that are paraphrases
+        and their similarity score.
     """
 
     # Load model
@@ -89,17 +90,8 @@ def paraphrase_mining(data: pd.DataFrame) -> pd.DataFrame:
         if data["text"].iloc[i].strip() != data["text"].iloc[j].strip()]
     print("Duplicates removed.")
 
-    # Print the top 100 unique paraphrases that do not have score 1.0
-    print("Top 100 paraphrases:")
-    seen_paraphrases = set()
-    for score, i, j in sorted(paraphrases, reverse=True):
-        sentence1 = data["text"].iloc[i].strip()
-        sentence2 = data["text"].iloc[j].strip()
-
-        if score < 0.95 and (sentence1, sentence2) not in seen_paraphrases:
-            print(f"{score} | {sentence1} | {sentence2}")
-            print("----------")
-            seen_paraphrases.add((sentence1, sentence2))
-
-        if len(seen_paraphrases) == 100:
-            break
+    # Return a new DataFrame with the paraphrases
+    return pd.DataFrame(
+        paraphrases,
+        columns=["similarity", "idx_1", "idx_2"]
+    )

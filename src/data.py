@@ -1,5 +1,5 @@
 # > Imports
-# # Standard Library
+# Standard Library
 import html
 
 # Third Party
@@ -141,8 +141,8 @@ def load_data(path: str) -> pd.DataFrame:
 
     Returns
     -------
-    pd.DataFrame : The DataFrame loaded from the given path.
-
+    pd.DataFrame
+        The DataFrame loaded from the given path.
     """
     return pd.read_pickle(path)
 
