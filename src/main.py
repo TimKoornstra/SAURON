@@ -4,10 +4,10 @@
 # Standard Library
 import argparse
 import os
+import pickle
 
 # Local
 from data import pipeline, load_data
-from semantics import paraphrase_mining
 from pairings import split_data, create_pairings
 
 
@@ -57,14 +57,17 @@ if __name__ == '__main__':
                       cache_path=args.cache_path)
 
     # Split the data into train, validation, and test sets
-    train, val, test = split_data(df[:5000])
+    train, val, test = split_data(df)
 
     # Check that the author_id's are non-overlapping
     assert len(set(train["author_id"]).intersection(
         set(val["author_id"]))) == 0
 
     # Create the pairings
-    train_pairings = create_pairings(train, semantic_range=(0.8, 1.0))
+    print("Creating pairings...")
+    train_pairings, s_pairings = create_pairings(
+        train, semantic_range=(0.8, 1.0))
+    print("Pairings created.")
 
     # Show some example pairings from the List[Tuple[str,str,int]] format
     print("Example pairings:")
@@ -77,3 +80,10 @@ if __name__ == '__main__':
 
     print(f"Number of positive examples: {n_positive}")
     print(f"Number of negative examples: {n_negative}")
+
+    # Save the pairings to a pickle file
+    with open("output/data/train_pairings.pkl", "wb") as f:
+        pickle.dump(train_pairings, f)
+
+    with open("output/data/s_pairings.pkl", "wb") as f:
+        pickle.dump(s_pairings, f)
