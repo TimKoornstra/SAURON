@@ -2,7 +2,6 @@
 
 # Standard Library
 from collections import defaultdict
-from multiprocess import Pool, cpu_count
 import os
 import pickle
 import random
@@ -10,6 +9,7 @@ import time
 from typing import List, Tuple
 
 # Third Party
+from multiprocess import Pool, cpu_count
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
 

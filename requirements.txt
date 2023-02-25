@@ -2,3 +2,5 @@ convokit==2.5.3
 pandas==1.5.3
 sentence-transformers==2.2.2
 torch==1.13.1
+multiprocess==0.70.14
+scikit-learn==1.2.1
