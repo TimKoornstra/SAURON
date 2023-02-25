@@ -1,17 +1,22 @@
-# Imports
+# > Imports
 
 # Standard Library
-from typing import List, Tuple
-import time
 from collections import defaultdict
+from multiprocess import Pool, cpu_count
+import os
+import pickle
 import random
+import time
+from typing import List, Tuple
 
 # Third Party
-from sklearn.model_selection import GroupShuffleSplit
 import pandas as pd
+from sklearn.model_selection import GroupShuffleSplit
 
 # Local
 from semantics import paraphrase_mining
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def split_data(df: pd.DataFrame, train_size: float = 0.8)\
@@ -54,7 +59,9 @@ def split_data(df: pd.DataFrame, train_size: float = 0.8)\
 
 def create_pairings(df: pd.DataFrame,
                     max_negative: int = 7,
-                    semantic_range: Tuple[float, float] = (0.95, 0.99))\
+                    semantic_range: Tuple[float, float] = (0.95, 0.99),
+                    paraphrase_path: str = None,
+                    output_path: str = None)\
         -> List[Tuple[str, str, int]]:
     """
     Create the pairings of sentences. Each pairing contains two sentences
@@ -77,20 +84,35 @@ def create_pairings(df: pd.DataFrame,
         The list of pairings.
     """
     s_pairings = []
+    pairings = []
 
     # Reset the index, so that the index is the same as the row number
     df = df.reset_index(drop=True)
 
     # First, we need to calculate the semantic similarity between each
     # pair of sentences.
-    paraphrases = paraphrase_mining(df)
+    if paraphrase_path:
+        try:
+            print("Loading paraphrases locally...")
+            with open(paraphrase_path, "rb") as f:
+                paraphrases = pickle.load(f)
+            print("Paraphrases loaded.")
+        except FileNotFoundError:
+            print("Paraphrases not found. Calculating...")
+            paraphrases = paraphrase_mining(df, output_path=output_path)
+    else:
+        paraphrases = paraphrase_mining(df, output_path=output_path)
 
-    # Next, we only want to keep the sentences that are within the
-    # semantic range.
-    paraphrases = paraphrases[(paraphrases["similarity"] >= semantic_range[0])
-                              & (paraphrases["similarity"] <= semantic_range[1])]
+    print(f"Paraphrases before semantic filtering: {paraphrases.shape[0]}")
 
-    #################
+    # Filter the paraphrases to only include those that are within the
+    # semantic range
+    paraphrases = paraphrases[(paraphrases["similarity"] >= semantic_range[0]) &
+                              (paraphrases["similarity"] <= semantic_range[1])]
+
+    print(f"Paraphrases after semantic filtering: {paraphrases.shape[0]}")
+
+    # Start a timer
     start = time.time()
 
     # Convert all paraphrases to a defaultdict of lists, where the key is the idx_1
@@ -103,99 +125,113 @@ def create_pairings(df: pd.DataFrame,
     # and the value is a list of the indices of sentences written by that author
     df["index"] = df.index
     data = df.groupby("author_id")["index"].apply(list).to_dict()
+    data_keys = list(data.keys())
 
     # Create a lookup table for the indices of the sentences
     lookup = df.set_index("index").to_dict()["text"]
 
     print("Time to convert: ", time.time() - start)
 
-    # Create the list of pairings
-    pairings = []
+    # Get the number of cores
+    n_cores = cpu_count()
 
-    data_seen = 0
+    print(f"Using {n_cores} cores.")
 
-    # Iterate through each author
-    for author_id, sentences in data.items():
-        for i in range(len(sentences)):
-            # Create the positives examples
-            # Check if we have already paired this author with itself
-            # Find the unique pairings of sentences
-            for j in range(i+1, len(sentences)):
-                # Add the pairing to the list
-                pairings.append(
-                    (lookup[sentences[i]], lookup[sentences[j]], 1))
+    # Split the data into n_cores chunks and create a list of chunks
+    # We need to make sure that the amount of chunks is exactly n_cores
+    # so that we can use all the cores
+    data_items = list(data.items())
+    chunks = [data_items[i::n_cores] for i in range(n_cores)]
 
-                # Create max_negative negative examples for each positive example
-                negative_examples = 0
+    def _create_pairings(authors):
+        """
+        Create the pairings for a chunk of the data.
 
-                # First, find the sentences that are semantically similar to the
-                # current sentence
-                # Iterate through each similar sentence
-                for k in paraphrases[sentences[i]]:
+        Parameters
+        ----------
+        authors : List[Tuple[int, List[int]]]
+            The chunk of the data containing the author_id and the indices of
+            the sentences written by that author.
+
+        Returns
+        -------
+        Tuple[List[Tuple[int, int, int]], List[Tuple[int, int, int]]]
+            A tuple containing the list of all pairings and the list of
+            semantic pairings.
+        """
+        # Temp list to store the pairings
+        temp_pairings = []
+        temp_s_pairings = []
+
+        for author_id, sentences in authors:
+            # Iterate through each sentence
+            for i in range(len(sentences)):
+                # Create the positive examples
+                # Find the unique pairings of sentences
+                neg_pairings = set()
+
+                for j in range(i+1, len(sentences)):
                     # Add the pairing to the list
-                    pairings.append((lookup[sentences[i]], lookup[k], 0))
-                    s_pairings.append((lookup[sentences[i]], lookup[k]))
+                    temp_pairings.append(
+                        (lookup[sentences[i]], lookup[sentences[j]], 1))
 
-                    # Increment the count of negative negative examples
-                    negative_examples += 1
+                    n_neg = 0
 
-                    # Check if we have enough negative examples
-                    if negative_examples >= max_negative:
-                        break
+                    for k in range(len(neg_pairings), len(paraphrases[sentences[i]])):
+                        # Get the index of the paraphrase
+                        idx_2 = paraphrases[sentences[i]][k]
 
-                # If we don't have enough negative examples, then we need to
-                # create some more negative examples by randomly selecting
-                # sentences from other authors
-                while negative_examples < max_negative:
-                    # Get a random author
-                    random_author = random.choice(list(data.keys()))
+                        # If the paraphrase is not by the same author, add it
+                        if idx_2 not in sentences:
+                            # Add the pairing to the list
+                            temp_pairings.append(
+                                (lookup[sentences[i]], lookup[idx_2], 0))
+                            temp_s_pairings.append(
+                                (lookup[sentences[i]], lookup[idx_2]))
 
-                    # Make sure that the random author is not the same as the
-                    # current author
-                    while random_author == author_id:
-                        random_author = random.choice(list(data.keys()))
+                            # Add the pairing to the set of negative pairings
+                            neg_pairings.add((sentences[i], idx_2))
 
-                    # Get a random sentence from the random author
-                    random_sentence = random.choice(data[random_author])
+                            # Increment the number of negative examples
+                            n_neg += 1
 
-                    # Add the pairing to the list
-                    pairings.append(
-                        (lookup[sentences[i]], lookup[random_sentence], 0))
+                            # If we have enough negative examples, break
+                            if n_neg >= max_negative:
+                                break
 
-                    # Increment the count of negative negative examples
-                    negative_examples += 1
+                    # If we do not have enough negative examples, we need to
+                    # create some random negative examples
+                    while n_neg < max_negative:
+                        # Get a random sentence from a random author
+                        random_author = random.choice(data_keys)
 
-            # If there are no positive examples, add this as a negative example
-            if len(sentences) == 1:
-                # Try to find a semantically similar sentence first
-                if sentences[i] in paraphrases:
-                    # Add the pairing to the list
-                    pairings.append(
-                        (lookup[sentences[i]],
-                         lookup[paraphrases[sentences[i]][0]],
-                         0))
+                        # Make sure that the random author is not the same as
+                        # current author
+                        while random_author == author_id:
+                            random_author = random.choice(data_keys)
 
-                    s_pairings.append(
-                        (lookup[sentences[i]],
-                         lookup[paraphrases[sentences[i]][0]]))
-                else:
-                    # Get a random author
-                    random_author = random.choice(list(data.keys()))
+                        random_sentence = random.choice(data[random_author])
 
-                    # Make sure that the random author is not the same as the
-                    # current author
-                    while random_author == author_id:
-                        random_author = random.choice(list(data.keys()))
+                        # Add the pairing to the list
+                        temp_pairings.append(
+                            (lookup[sentences[i]], lookup[random_sentence], 0))
 
-                    # Get a random sentence from the random author
-                    random_sentence = random.choice(data[random_author])
+                        # Increment the number of negative examples
+                        n_neg += 1
 
-                    # Add the pairing to the list
-                    pairings.append(
-                        (lookup[sentences[i]], lookup[random_sentence], 0))
+        return (temp_pairings, temp_s_pairings)
 
-            data_seen += 1
-            print(f" {data_seen}/{len(df)}", end="\r")
+    # Create a pool of processes
+    with Pool(n_cores) as pool:
+        # Use tqdm to show progress
+        results = pool.map(_create_pairings, chunks)
+
+    # Flatten the list of lists and separate the pairings and semantic pairings
+    for result in results:
+        pairings += result[0]
+        s_pairings += result[1]
+
+    print(f"Time to create pairings: {time.time() - start}")
 
     end = time.time()
     print(f"Created {len(pairings)} pairings in {end-start} seconds.")

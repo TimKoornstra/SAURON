@@ -5,6 +5,7 @@
 import argparse
 import os
 import pickle
+from random import sample
 
 # Local
 from data import pipeline, load_data
@@ -57,7 +58,7 @@ if __name__ == '__main__':
                       cache_path=args.cache_path)
 
     # Split the data into train, validation, and test sets
-    train, val, test = split_data(df)
+    train, val, test = split_data(df[:500000])
 
     # Check that the author_id's are non-overlapping
     assert len(set(train["author_id"]).intersection(
@@ -66,13 +67,21 @@ if __name__ == '__main__':
     # Create the pairings
     print("Creating pairings...")
     train_pairings, s_pairings = create_pairings(
-        train, semantic_range=(0.8, 1.0))
+        train,
+        semantic_range=(0.7, 1.0),
+        max_negative=3,
+        output_path=args.output_path,
+        paraphrase_path=f"{args.output_path}/data/paraphrases_{len(train)}.pkl")
     print("Pairings created.")
 
-    # Show some example pairings from the List[Tuple[str,str,int]] format
-    print("Example pairings:")
-    for i in range(5):
-        print(f"Pairing {i}: {train_pairings[i]}")
+    print("=============================")
+    print("Semantically similar examples")
+    print("=============================")
+    for example in sample(s_pairings, 10):
+        print(f"{example[0]}")
+        print("\n---\n")
+        print(f"{example[1]}")
+        print("\n=============================\n")
 
     # Count the number of positive and negative examples
     n_positive = sum([1 for _, _, label in train_pairings if label == 1])
@@ -82,8 +91,8 @@ if __name__ == '__main__':
     print(f"Number of negative examples: {n_negative}")
 
     # Save the pairings to a pickle file
-    with open("output/data/train_pairings.pkl", "wb") as f:
+    with open(f"{args.output_path}/data/train_pairings.pkl", "wb") as f:
         pickle.dump(train_pairings, f)
 
-    with open("output/data/s_pairings.pkl", "wb") as f:
+    with open(f"{args.output_path}/data/s_pairings.pkl", "wb") as f:
         pickle.dump(s_pairings, f)

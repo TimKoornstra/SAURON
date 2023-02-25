@@ -78,13 +78,34 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
 
         # Remove all invalid utterances
         df = df.drop(df[df["text"].str.strip().str.lower().isin(
-            ["[ deleted ]", "[deleted]", "[ removed ]", "[removed]",
-             "[mention]", "[url]", "[mention] [url]", "[url] [mention]", ""])]
+            ["[ deleted ]", "[deleted]", "[ removed ]", "[removed]", ""])]
             .index
         )
 
-        # Remove all utterances from users named "[deleted]"
-        df = df.drop(df[df["author_id"].str.lower() == "[deleted]"].index)
+        # (i.e., utterances that are only mentions, URLs or a combination of
+        # mentions and URLs)
+        df = df.drop(df[df["text"].str.split().apply(
+            lambda x: all(
+                word in ["[MENTION]", "[URL]"] for word in x
+            )
+        )].index)
+
+        # Remove all utterances from users named "[deleted]" or "MTGCardFetcher"
+        df = df.drop(
+            df[df["author_id"].str.strip().str.lower()
+               .isin(["[deleted]", "[mtgcardfetcher]"])].index)
+
+        # Remove all utterances from users that are likely bots
+        # (i.e. users that have a username that contains "bot" or all of their
+        # utterances contain the word "bot")
+        df = df.drop(df[(df["author_id"].str.lower().str.contains(
+            "bot", regex=False, case=False)) |
+            (df["text"].str.lower().str.contains(
+                "bot", regex=False, case=False))].index)
+
+    # Remove all utterances from authors that have only one utterance
+    df = df.drop(df.groupby("author_id").filter(
+        lambda x: x.shape[0] == 1).index)
 
     # Unescape the HTML entities
     df["text"] = df["text"].apply(html.unescape)
