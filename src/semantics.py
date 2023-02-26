@@ -8,53 +8,9 @@ from sentence_transformers import SentenceTransformer, util
 import re
 
 
-def generate_embeddings(data: pd.DataFrame,
-                        output_path: str = None,
-                        cache_folder: str = ".cache/") -> pd.DataFrame:
-    """
-    Generate the semantic embeddings for the data.
-
-    Parameters
-    ----------
-    data : pd.DataFrame
-        The data to generate the embeddings for.
-    output_path : str
-        The path to the output directory.
-    cache_folder : str
-        The path to the cache directory.
-
-    Returns
-    -------
-    pd.DataFrame
-        The data with the embeddings added.
-    """
-
-    # Load model
-    print("Loading semantic embedding model...")
-    model = SentenceTransformer(
-        "all-mpnet-base-v2",
-        cache_folder=cache_folder)
-    print("Model loaded.")
-
-    # Generate embeddings
-    print("Generating embeddings...")
-    embeddings = model.encode(data["text"].tolist(), show_progress_bar=True)
-    print("Embeddings generated.")
-
-    # Add the embeddings to the DataFrame
-    data["embeddings"] = embeddings
-
-    if output_path:
-        # Save the DataFrame
-        print("Saving data...")
-        data.to_pickle(f"{output_path}/data/full_dataset.pkl")
-        print("Data saved.")
-
-    return data
-
-
 def paraphrase_mining(data: pd.DataFrame,
                       output_path: str = None,
+                      output_name: str = "",
                       cache_folder: str = ".cache/") -> pd.DataFrame:
     """
     Use paraphrase mining to find sentences with the same meaning.
@@ -75,7 +31,7 @@ def paraphrase_mining(data: pd.DataFrame,
         try:
             print("Loading paraphrase data...")
             paraphrases = pd.read_pickle(
-                f"{output_path}/data/paraphrases_{len(data)}.pkl")
+                f"{output_path}/paraphrases/{output_name}-paraphrases.pkl")
             print("Data loaded.")
             return paraphrases
         except FileNotFoundError:
@@ -154,7 +110,7 @@ def paraphrase_mining(data: pd.DataFrame,
     if output_path:
         print("Saving paraphrase data...")
         paraphrases.to_pickle(
-            f"{output_path}/data/paraphrases_{len(data)}.pkl")
+            f"{output_path}/paraphrases/{output_name}-paraphrases.pkl")
         print("Data saved.")
 
     # Return the paraphrases

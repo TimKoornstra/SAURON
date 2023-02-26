@@ -5,9 +5,11 @@ import html
 # Third Party
 from convokit import Corpus, download
 import pandas as pd
+from transformers import RobertaTokenizer
+from tqdm import tqdm
 
 
-def load_reddit_corpus(output_path: str = ".cache/") -> pd.DataFrame:
+def load_reddit_corpus(cache_path: str = ".cache/") -> pd.DataFrame:
     """
     Load the Reddit Corpus and return it as a Pandas DataFrame.
 
@@ -18,7 +20,7 @@ def load_reddit_corpus(output_path: str = ".cache/") -> pd.DataFrame:
     """
     # Download the corpus
     corpus = Corpus(
-        download("reddit-corpus", data_dir=f"{output_path}/reddit-corpus"))
+        download("reddit-corpus", data_dir=f"{cache_path}/reddit-corpus"))
 
     # Convert the corpus to a Pandas DataFrame
     corpus = corpus.get_utterances_dataframe()
@@ -55,6 +57,8 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
     pd.DataFrame
         The preprocessed DataFrame.
     """
+    tqdm.pandas()
+
     if data_source == "reddit":
         # Replace mentions with the "[MENTION]" token
         df["text"] = df["text"].str.replace(
@@ -93,7 +97,7 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
         # Remove all utterances from users named "[deleted]" or "MTGCardFetcher"
         df = df.drop(
             df[df["author_id"].str.strip().str.lower()
-               .isin(["[deleted]", "[mtgcardfetcher]"])].index)
+               .isin(["[deleted]", "mtgcardfetcher"])].index)
 
         # Remove all utterances from users that are likely bots
         # (i.e. users that have a username that contains "bot" or all of their
@@ -109,6 +113,14 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
 
     # Unescape the HTML entities
     df["text"] = df["text"].apply(html.unescape)
+
+    # Ensure that the texts fit in the maximum length of the RoBERTa model
+    tokenizer = RobertaTokenizer.from_pretrained(
+        "roberta-base")
+    df = df.drop(df[df["text"].progress_apply(
+        lambda x: len(tokenizer.encode(x)) > 512)].index)
+
+    print(f"Number of utterances: {df.shape[0]}")
 
     return df
 
@@ -151,7 +163,7 @@ def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit") -> pd.Data
     return df2
 
 
-def load_data(path: str) -> pd.DataFrame:
+def load_data(source: str, path: str) -> pd.DataFrame:
     """
     Load the DataFrame from the given path.
 
@@ -159,13 +171,15 @@ def load_data(path: str) -> pd.DataFrame:
     ----------
     path : str
         The path to load the DataFrame from.
+    name : str
+        The name of the DataFrame.
 
     Returns
     -------
     pd.DataFrame
         The DataFrame loaded from the given path.
     """
-    return pd.read_pickle(path)
+    return pd.read_pickle(f"{path}/preprocessed/{source}_data.pkl")
 
 
 def pipeline(data_source: str = "reddit",
@@ -208,7 +222,7 @@ def pipeline(data_source: str = "reddit",
     if output_path:
         # Save the DataFrame
         print("Saving data...")
-        df.to_pickle(f"{output_path}/data/{data_source}.pkl")
+        df.to_pickle(f"{output_path}/preprocessed/{data_source}_data.pkl")
         print("Data saved.")
 
     return df

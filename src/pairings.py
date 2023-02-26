@@ -60,8 +60,8 @@ def split_data(df: pd.DataFrame, train_size: float = 0.8)\
 def create_pairings(df: pd.DataFrame,
                     max_negative: int = 7,
                     semantic_range: Tuple[float, float] = (0.95, 0.99),
-                    paraphrase_path: str = None,
-                    output_path: str = None)\
+                    output_path: str = None,
+                    output_name: str = "")\
         -> List[Tuple[str, str, int]]:
     """
     Create the pairings of sentences. Each pairing contains two sentences
@@ -77,12 +77,27 @@ def create_pairings(df: pd.DataFrame,
         The number of negative examples to create for each positive example.
     semantic_range : Tuple[float, float]
         The inclusive range of semantic similarity to use for semantic filtering.
+    output_path : str
+        The path to save the pairings to.
+    output_name : str
+        The name of the output file.
 
     Returns
     -------
     List[Tuple[str, str, int]]
         The list of pairings.
     """
+    # Check if the pairings have already been created
+    if output_path:
+        try:
+            print("Loading pairings locally...")
+            with open(f"{output_path}/paired/{output_name}-pairings.pkl", "rb") as f:
+                pairings = pickle.load(f)
+            print("Pairings loaded.")
+            return pairings
+        except FileNotFoundError:
+            print("Pairings not found. Calculating...")
+
     s_pairings = []
     pairings = []
 
@@ -91,17 +106,19 @@ def create_pairings(df: pd.DataFrame,
 
     # First, we need to calculate the semantic similarity between each
     # pair of sentences.
-    if paraphrase_path:
+    if output_path:
         try:
             print("Loading paraphrases locally...")
-            with open(paraphrase_path, "rb") as f:
+            with open(f"{output_path}/paraphrases/{output_name}-paraphrases.pkl", "rb") as f:
                 paraphrases = pickle.load(f)
             print("Paraphrases loaded.")
         except FileNotFoundError:
             print("Paraphrases not found. Calculating...")
-            paraphrases = paraphrase_mining(df, output_path=output_path)
+            paraphrases = paraphrase_mining(
+                df, output_path=output_path, output_name=output_name)
     else:
-        paraphrases = paraphrase_mining(df, output_path=output_path)
+        paraphrases = paraphrase_mining(
+            df, output_path=output_path, output_name=output_name)
 
     print(f"Paraphrases before semantic filtering: {paraphrases.shape[0]}")
 
@@ -238,4 +255,11 @@ def create_pairings(df: pd.DataFrame,
 
     print(f"Found {len(s_pairings)} semantic pairings.")
 
-    return pairings, s_pairings
+    # Save the pairings
+    if output_path:
+        with open(f"{output_path}/paired/{output_name}-pairings.pkl", "wb") as f:
+            pickle.dump(pairings, f)
+        with open(f"{output_path}/paired/{output_name}-s_pairings.pkl", "wb") as f:
+            pickle.dump(s_pairings, f)
+
+    return pairings
