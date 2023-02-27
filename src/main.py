@@ -8,7 +8,7 @@ import os
 # Local
 from data import pipeline, load_data
 from pairings import split_data, create_pairings
-from train import training_pipeline
+from train import training
 
 
 def add_arguments(parser):
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     train_pairings = create_pairings(
         train,
         semantic_range=(0.7, 1.0),
-        max_negative=3,
+        max_negative=1,
         output_path=args.path,
         output_name="train")
 
@@ -72,7 +72,7 @@ if __name__ == '__main__':
     val_pairings = create_pairings(
         val,
         semantic_range=(0.7, 1.0),
-        max_negative=3,
+        max_negative=1,
         output_path=args.path,
         output_name="val")
 
@@ -81,13 +81,13 @@ if __name__ == '__main__':
     test_pairings = create_pairings(
         test,
         semantic_range=(0.7, 1.0),
-        max_negative=3,
+        max_negative=1,
         output_path=args.path,
         output_name="test")
 
     print("Pairings created.")
 
     # Run the training pipeline
-    training_pipeline(train_pairings[:16], val_pairings)
+    training(train_pairings[:64], val_pairings[:32], test_pairings[:32])
 
     print("Done.")
