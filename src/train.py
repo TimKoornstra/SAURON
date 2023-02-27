@@ -2,8 +2,11 @@
 
 from transformers import RobertaTokenizer, AutoConfig
 from torch.utils.data import DataLoader
-from models import RobertaForAuthorshipVerification, AVDataSet
-from transformers import get_linear_schedule_with_warmup
+from models import RobertaForAV, AVDataSet
+from transformers import get_linear_schedule_with_warmup, pipeline
+import evaluate
+
+# from evaluate import evaluator
 import torch
 from torch.optim import AdamW
 from tqdm.auto import tqdm
@@ -37,22 +40,22 @@ def train(model, train_dataloader, optimizer, scheduler, device, num_epochs=5):
     progress_bar = tqdm(range(num_training_steps))
 
     for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-        print('-' * 10)
+        print("Epoch {}/{}".format(epoch, num_epochs - 1))
+        print("-" * 10)
 
         model.train()
         running_loss = 0.0
 
         for step, batch in enumerate(train_dataloader):
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
 
             optimizer.zero_grad()
 
-            loss = model(input_ids=input_ids,
-                         attention_mask=attention_mask,
-                         labels=labels)
+            loss = model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            )
 
             loss.backward()
             optimizer.step()
@@ -62,49 +65,66 @@ def train(model, train_dataloader, optimizer, scheduler, device, num_epochs=5):
             running_loss += loss.item()
 
             if step % 100 == 0 and step != 0:
-                print('Loss after {} steps: {}'.format(step, running_loss/step))
+                print("Loss after {} steps: {}".format(step, running_loss / step))
 
-        print('Loss after epoch {}: {}'.format(
-            epoch, running_loss/len(train_dataloader)))
+        print(
+            "Loss after epoch {}: {}".format(
+                epoch, running_loss / len(train_dataloader)
+            )
+        )
         print()
 
     return model
 
 
 def training_pipeline(train_data, val_data):
-    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
 
     # Defining the dataset
     train_dataset = AVDataSet(train_data, tokenizer, max_len=512)
     val_dataset = AVDataSet(val_data, tokenizer, max_len=512)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Configuring the model
-    config = AutoConfig.from_pretrained('roberta-base')
+    config = AutoConfig.from_pretrained("roberta-base")
 
     # Defining the model
-    model = RobertaForAuthorshipVerification(config=config)
+    model = RobertaForAV(model_name="roberta-base", num_labels=2)
     model.to(device)
 
     # Defining the optimizer
-    optimizer = AdamW(model.parameters(),
-                      lr=1e-5,
-                      eps=1e-8)
+    optimizer = AdamW(model.parameters(), lr=1e-5, eps=1e-8)
 
     # Defining the dataloader
-    train_dataloader = DataLoader(train_dataset,
-                                  batch_size=4)
-    val_dataloader = DataLoader(val_dataset,
-                                batch_size=16)
+    train_dataloader = DataLoader(train_dataset, batch_size=8)
+    val_dataloader = DataLoader(val_dataset, batch_size=16)
 
     # Defining the scheduler
     total_steps = len(train_dataloader) * 5
-    scheduler = get_linear_schedule_with_warmup(optimizer,
-                                                num_warmup_steps=0,
-                                                num_training_steps=total_steps)
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=0, num_training_steps=total_steps
+    )
 
     # Training the model
-    model = train(model, train_dataloader, optimizer, scheduler, device)
+    model = train(model, train_dataloader, optimizer, scheduler, device, num_epochs=1)
+
+    metric = evaluate.load("accuracy")
+    # Testing the model
+    for batch in val_dataloader:
+        batch = {k: v.to(device) for k, v in batch.items()}
+
+        model.eval()
+
+        with torch.no_grad():
+            outputs = model(**batch)
+
+        logits = outputs.logits
+        predictions = torch.argmax(logits, dim=-1)
+        metric.add_batch(predictions=predictions, references=batch["labels"])
+
+    print(metric.compute())
+
+    evaluate.evaluator(model, val_dataloader, device)
 
     return model

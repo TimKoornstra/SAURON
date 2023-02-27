@@ -1,4 +1,3 @@
-
 # In this file, I will create the models for the Authorship Verification task
 # I will finetune a pretrained RoBERTa model for this task
 # "roberta-base" is the name of the pretrained model
@@ -20,32 +19,39 @@
 
 import torch
 import torch.nn as nn
-from transformers import RobertaModel
+from transformers import RobertaModel, AutoConfig
 import os
-os.environ["TRANSFORMERS_CACHE"] =\
-    "~/Documents/uni/thesis/style-embeddings/.cache/huggingface/transformers"
+
+os.environ[
+    "TRANSFORMERS_CACHE"
+] = "~/Documents/uni/thesis/style-embeddings/.cache/huggingface/transformers"
 
 
-class RobertaForAuthorshipVerification(nn.Module):
+class RobertaForAV(RobertaModel):
     def __init__(self, model_name, num_labels):
-        super(RobertaForAuthorshipVerification, self).__init__()
+        super(RobertaForAV, self).__init__(
+            config=AutoConfig.from_pretrained(model_name)
+        )
+        self.num_labels = num_labels
         self.roberta = RobertaModel.from_pretrained(model_name)
         self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(768, num_labels)
+        self.classifier = nn.Linear(self.config.hidden_size, num_labels)
 
     def forward(self, input_ids, attention_mask, labels=None):
-        outputs = self.roberta(input_ids=input_ids,
-                               attention_mask=attention_mask)
-        pooled_output = outputs[1]
+        outputs = self.roberta(
+            input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+        )
+        pooled_output = outputs.pooler_output
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
         if labels is not None:
-            loss_fct = ContrastiveLoss()
-            loss = loss_fct(logits.view(-1, 2), labels.view(-1))
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
             return loss
         else:
             return logits
+
 
 # Defining the Contrastive Loss function
 
@@ -66,8 +72,15 @@ class ContrastiveLoss(nn.Module):
         sim_neg = sim[:, 1]
 
         # Computing the loss
-        loss = -torch.log(torch.exp(sim_pos/self.T) /
-                          (torch.exp(sim_pos/self.T) + torch.exp(sim_neg/self.T)))
+        loss = -torch.log(
+            torch.exp(sim_pos / self.T)
+            / (torch.exp(sim_pos / self.T) + torch.exp(sim_neg / self.T))
+        )
+
+        # The loss is actually different: l_i = -log(exp(sim(x_i, x_j)) / (sum_k exp(sim(x_i, x_k)/T)))
+        loss = -torch.log(
+            torch.exp(sim_pos / self.T) / (torch.sum(torch.exp(sim / self.T), dim=1))
+        )
 
         # Computing the mean loss
         loss = loss.mean()
@@ -89,15 +102,20 @@ class AVDataSet(torch.utils.data.Dataset):
         sentence2 = self.data[index][1]
         label = self.data[index][2]
 
-        encoding = self.tokenizer.encode_plus(sentence1,
-                                              sentence2,
-                                              add_special_tokens=True,
-                                              max_length=self.max_len,
-                                              return_token_type_ids=False,
-                                              pad_to_max_length=True,
-                                              return_attention_mask=True,
-                                              return_tensors='pt')
+        encoding = self.tokenizer.encode_plus(
+            sentence1,
+            sentence2,
+            add_special_tokens=True,
+            max_length=self.max_len,
+            return_token_type_ids=False,
+            padding="max_length",
+            truncation=True,
+            return_attention_mask=True,
+            return_tensors="pt",
+        )
 
-        return {'input_ids': encoding['input_ids'].flatten(),
-                'attention_mask': encoding['attention_mask'].flatten(),
-                'labels': torch.tensor(label, dtype=torch.long)}
+        return {
+            "input_ids": encoding["input_ids"].flatten(),
+            "attention_mask": encoding["attention_mask"].flatten(),
+            "labels": torch.tensor(label, dtype=torch.long),
+        }
