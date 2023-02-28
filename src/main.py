@@ -27,10 +27,19 @@ def add_arguments(parser):
     parser.add_argument("-p", "--path", type=str, default="data/",
                         help="The path to the data directory.\
                                 (default: 'data/')")
+    parser.add_argument("--output_path", type=str, default="output/",
+                        help="The path to the output directory.\
+                                (default: 'output/')")
     parser.add_argument("--cache_path", type=str, default=".cache/",
                         help="The path to the cache directory. All temporary\
                                 models and data will be saved here.\
                                 (default: '.cache/')")
+    parser.add_argument("--batch_size", type=int, default=8,
+                        help="The batch size to use for training.\
+                                (default: 8)")
+    parser.add_argument("--epochs", type=int, default=3,
+                        help="The number of epochs to train the model for.\
+                                (default: 3)")
 
 
 if __name__ == '__main__':
@@ -88,6 +97,12 @@ if __name__ == '__main__':
     print("Pairings created.")
 
     # Run the training pipeline
-    training(train_pairings[:64], val_pairings[:32], test_pairings[:32])
+    training(train_pairings[:10000],
+             val_pairings[:1000],
+             test_pairings[:1000],
+             epochs=args.epochs,
+             cache_path=args.cache_path,
+             output_path=args.output_path,
+             batch_size=args.batch_size)
 
     print("Done.")

@@ -62,12 +62,11 @@ def create_pairings(df: pd.DataFrame,
                     semantic_range: Tuple[float, float] = (0.95, 0.99),
                     output_path: str = None,
                     output_name: str = "")\
-        -> List[Tuple[str, str, int]]:
+        -> List[List[str]]:
     """
-    Create the pairings of sentences. Each pairing contains two sentences
-    and a label: 1 for positive, 0 for negative. The positive examples
-    are sentences that are written by the same author. The negative examples
-    are sentences that are written by different authors.
+    Create the pairings for the data. The pairings are created by taking
+    each sentence and finding the n most similar sentences. The most similar
+    sentence is the positive example, and the rest are negative examples.
 
     Parameters
     ----------
@@ -84,7 +83,7 @@ def create_pairings(df: pd.DataFrame,
 
     Returns
     -------
-    List[Tuple[str, str, int]]
+    List[List[str]]
         The list of pairings.
     """
     # Check if the pairings have already been created
@@ -172,7 +171,7 @@ def create_pairings(df: pd.DataFrame,
 
         Returns
         -------
-        Tuple[List[Tuple[int, int, int]], List[Tuple[int, int, int]]]
+        Tuple[List[List[str]], List[Tuple[str, str]]]
             A tuple containing the list of all pairings and the list of
             semantic pairings.
         """
@@ -187,10 +186,18 @@ def create_pairings(df: pd.DataFrame,
                 # Find the unique pairings of sentences
                 neg_pairings = set()
 
+                anchor = lookup[sentences[i]]
+
                 for j in range(i+1, len(sentences)):
-                    # Add the pairing to the list
-                    temp_pairings.append(
-                        (lookup[sentences[i]], lookup[sentences[j]], 1))
+                    # Create a predetermined size list of the example, so that
+                    # it contains the anchor, the positive example, and the
+                    # negative examples
+                    example = [None] * (max_negative + 2)
+                    pos = lookup[sentences[j]]
+
+                    # Add the anchor and the positive example to the example
+                    example[0] = anchor
+                    example[1] = pos
 
                     n_neg = 0
 
@@ -201,8 +208,7 @@ def create_pairings(df: pd.DataFrame,
                         # If the paraphrase is not by the same author, add it
                         if idx_2 not in sentences:
                             # Add the pairing to the list
-                            temp_pairings.append(
-                                (lookup[sentences[i]], lookup[idx_2], 0))
+                            example[n_neg + 2] = lookup[idx_2]
                             temp_s_pairings.append(
                                 (lookup[sentences[i]], lookup[idx_2]))
 
@@ -230,11 +236,13 @@ def create_pairings(df: pd.DataFrame,
                         random_sentence = random.choice(data[random_author])
 
                         # Add the pairing to the list
-                        temp_pairings.append(
-                            (lookup[sentences[i]], lookup[random_sentence], 0))
+                        example[n_neg + 2] = lookup[random_sentence]
 
                         # Increment the number of negative examples
                         n_neg += 1
+
+                    # Add the example to the list of examples
+                    temp_pairings.append(example)
 
         return (temp_pairings, temp_s_pairings)
 
@@ -247,6 +255,9 @@ def create_pairings(df: pd.DataFrame,
     for result in results:
         pairings += result[0]
         s_pairings += result[1]
+
+    print(pairings[0])
+    print(s_pairings[0])
 
     print(f"Time to create pairings: {time.time() - start}")
 
