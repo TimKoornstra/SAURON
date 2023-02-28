@@ -58,7 +58,7 @@ if __name__ == '__main__':
                       cache_path=args.cache_path)
 
     # Split the data into train, validation, and test sets
-    train, val, test = split_data(df[:500000])
+    train, val, test = split_data(df)
 
     # Check that the author_id's are non-overlapping
     assert len(set(train["author_id"]).intersection(
@@ -96,13 +96,14 @@ if __name__ == '__main__':
 
     print("Pairings created.")
 
+    """
     # Run the training pipeline
-    training(train_pairings[:10000],
-             val_pairings[:1000],
-             test_pairings[:1000],
+    training(train_pairings,
+             val_pairings,
+             test_pairings,
              epochs=args.epochs,
              cache_path=args.cache_path,
              output_path=args.output_path,
              batch_size=args.batch_size)
-
+    """
     print("Done.")
