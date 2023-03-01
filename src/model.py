@@ -163,7 +163,7 @@ class StyleEmbeddingModel:
         """
 
         # Get the cosine similarity between the sentences
-        cosine_similarities = self.similarity(first, first)
+        cosine_similarities = self.similarity(first, second)
 
         # Return the predictions
         return (cosine_similarities > threshold).int().tolist()
