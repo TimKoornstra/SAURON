@@ -19,7 +19,8 @@ from semantics import paraphrase_mining
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-def split_data(df: pd.DataFrame, train_size: float = 0.8)\
+def split_data(df: pd.DataFrame,
+               train_size: float = 0.8)\
         -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Split the data into train, validation, and test sets.
@@ -39,19 +40,21 @@ def split_data(df: pd.DataFrame, train_size: float = 0.8)\
     """
 
     # Split the data into train and test sets
-    train_test_splitter = GroupShuffleSplit(
-        n_splits=1, test_size=1-train_size, random_state=42)
+    train_test_splitter = GroupShuffleSplit(n_splits=1,
+                                            test_size=1-train_size,
+                                            random_state=42)
 
-    train_idx, test_idx = next(
-        train_test_splitter.split(df, groups=df["author_id"]))
+    train_idx, test_idx = next(train_test_splitter.split(df,
+                                                         groups=df["author_id"]))
     train, test = df.iloc[train_idx], df.iloc[test_idx]
 
     # Split the test set into validation and test sets (50/50)
-    val_test_splitter = GroupShuffleSplit(
-        n_splits=1, test_size=0.5, random_state=42)
+    val_test_splitter = GroupShuffleSplit(n_splits=1,
+                                          test_size=0.5,
+                                          random_state=42)
 
-    val_idx, test_idx = next(val_test_splitter.split(
-        test, groups=test["author_id"]))
+    val_idx, test_idx = next(val_test_splitter.split(test,
+                                                     groups=test["author_id"]))
     val, test = test.iloc[val_idx], test.iloc[test_idx]
 
     return train, val, test
@@ -61,8 +64,7 @@ def create_pairings(df: pd.DataFrame,
                     max_negative: int = 7,
                     semantic_range: Tuple[float, float] = (0.95, 0.99),
                     output_path: str = None,
-                    output_name: str = "")\
-        -> List[List[str]]:
+                    output_name: str = "") -> List[List[str]]:
     """
     Create the pairings for the data. The pairings are created by taking
     each sentence and finding the n most similar sentences. The most similar
@@ -113,11 +115,13 @@ def create_pairings(df: pd.DataFrame,
             print("Paraphrases loaded.")
         except FileNotFoundError:
             print("Paraphrases not found. Calculating...")
-            paraphrases = paraphrase_mining(
-                df, output_path=output_path, output_name=output_name)
+            paraphrases = paraphrase_mining(df,
+                                            output_path=output_path,
+                                            output_name=output_name)
     else:
-        paraphrases = paraphrase_mining(
-            df, output_path=output_path, output_name=output_name)
+        paraphrases = paraphrase_mining(df,
+                                        output_path=output_path,
+                                        output_name=output_name)
 
     print(f"Paraphrases before semantic filtering: {paraphrases.shape[0]}")
 
@@ -161,7 +165,7 @@ def create_pairings(df: pd.DataFrame,
 
     def _create_pairings(authors):
         """
-        Create the pairings for a chunk of the data.
+        A helper function to create the pairings for a chunk of the data.
 
         Parameters
         ----------
@@ -248,7 +252,6 @@ def create_pairings(df: pd.DataFrame,
 
     # Create a pool of processes
     with Pool(n_cores) as pool:
-        # Use tqdm to show progress
         results = pool.map(_create_pairings, chunks)
 
     # Flatten the list of lists and separate the pairings and semantic pairings
@@ -256,11 +259,11 @@ def create_pairings(df: pd.DataFrame,
         pairings += result[0]
         s_pairings += result[1]
 
+    # Print the first example of each list
     print(pairings[0])
     print(s_pairings[0])
 
-    print(f"Time to create pairings: {time.time() - start}")
-
+    # End the timer and print the time it took to create the pairings
     end = time.time()
     print(f"Created {len(pairings)} pairings in {end-start} seconds.")
 

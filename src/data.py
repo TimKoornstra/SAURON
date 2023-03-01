@@ -19,8 +19,8 @@ def load_reddit_corpus(cache_path: str = ".cache/") -> pd.DataFrame:
         The Reddit Corpus as a Pandas DataFrame.
     """
     # Download the corpus
-    corpus = Corpus(
-        download("reddit-corpus", data_dir=f"{cache_path}/reddit-corpus"))
+    corpus = Corpus(download("reddit-corpus",
+                             data_dir=f"{cache_path}/reddit-corpus"))
 
     # Convert the corpus to a Pandas DataFrame
     corpus = corpus.get_utterances_dataframe()
@@ -41,7 +41,8 @@ def load_reddit_corpus(cache_path: str = ".cache/") -> pd.DataFrame:
     return corpus
 
 
-def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
+def preprocess(df: pd.DataFrame,
+               data_source: str = "reddit") -> pd.DataFrame:
     """
     Preprocess the given DataFrame based on the data source.
 
@@ -125,7 +126,9 @@ def preprocess(df: pd.DataFrame, data_source: str = "reddit") -> pd.DataFrame:
     return df
 
 
-def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit") -> pd.DataFrame:
+def create_subset(df: pd.DataFrame,
+                  n: int,
+                  group: str = "subreddit") -> pd.DataFrame:
     """
     Create a subset of the given DataFrame.
 
@@ -163,7 +166,8 @@ def create_subset(df: pd.DataFrame, n: int, group: str = "subreddit") -> pd.Data
     return df2
 
 
-def load_data(source: str, path: str) -> pd.DataFrame:
+def load_data(source: str,
+              path: str) -> pd.DataFrame:
     """
     Load the DataFrame from the given path.
 
@@ -211,12 +215,14 @@ def pipeline(data_source: str = "reddit",
 
     # Preprocess the DataFrame
     print("Preprocessing data...")
-    df = preprocess(df, data_source)
+    df = preprocess(df=df,
+                    data_source=data_source)
     print("Data preprocessed.")
 
     # Create a subset of the DataFrame
     print("Creating subset...")
-    df = create_subset(df, 1000000)
+    df = create_subset(df=df,
+                       n=1000000)
     print("Subset created.")
 
     if output_path:

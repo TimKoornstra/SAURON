@@ -8,7 +8,7 @@ import os
 # Local
 from data import pipeline, load_data
 from pairings import split_data, create_pairings
-from train import training
+from model import StyleEmbeddingModel
 
 
 def add_arguments(parser):
@@ -50,7 +50,8 @@ if __name__ == '__main__':
 
     # If the file exists, load the data from the file
     if os.path.exists(f"{args.path}/preprocessed/{args.data_source}_data.pkl"):
-        df = load_data(args.data_source, args.path)
+        df = load_data(source=args.data_source,
+                       path=args.path)
     else:
         # Run the preprocessing pipeline
         df = pipeline(data_source=args.data_source,
@@ -58,7 +59,7 @@ if __name__ == '__main__':
                       cache_path=args.cache_path)
 
     # Split the data into train, validation, and test sets
-    train, val, test = split_data(df)
+    train, val, test = split_data(df=df)
 
     # Check that the author_id's are non-overlapping
     assert len(set(train["author_id"]).intersection(
@@ -69,41 +70,46 @@ if __name__ == '__main__':
 
     print("-" * 80)
     print("Train set:")
-    train_pairings = create_pairings(
-        train,
-        semantic_range=(0.7, 1.0),
-        max_negative=1,
-        output_path=args.path,
-        output_name="train")
+    train_pairings = create_pairings(train,
+                                     semantic_range=(0.7, 1.0),
+                                     max_negative=1,
+                                     output_path=args.path,
+                                     output_name="train")
 
     print("-" * 80)
     print("Validation set:")
-    val_pairings = create_pairings(
-        val,
-        semantic_range=(0.7, 1.0),
-        max_negative=1,
-        output_path=args.path,
-        output_name="val")
+    val_pairings = create_pairings(val,
+                                   semantic_range=(0.7, 1.0),
+                                   max_negative=1,
+                                   output_path=args.path,
+                                   output_name="val")
 
     print("-" * 80)
     print("Test set:")
-    test_pairings = create_pairings(
-        test,
-        semantic_range=(0.7, 1.0),
-        max_negative=1,
-        output_path=args.path,
-        output_name="test")
+    test_pairings = create_pairings(test,
+                                    semantic_range=(0.7, 1.0),
+                                    max_negative=1,
+                                    output_path=args.path,
+                                    output_name="test")
 
     print("Pairings created.")
 
-    """
-    # Run the training pipeline
-    training(train_pairings,
-             val_pairings,
-             test_pairings,
-             epochs=args.epochs,
-             cache_path=args.cache_path,
-             output_path=args.output_path,
-             batch_size=args.batch_size)
-    """
+    # Create the model
+    model = StyleEmbeddingModel(base_model="roberta-base",
+                                cache_path=args.cache_path,
+                                output_path=args.output_path)
+
+    # Train the model
+    print("Training model...")
+    model.train(train_data=train_pairings,
+                val_data=val_pairings,
+                batch_size=args.batch_size,
+                epochs=args.epochs)
+    print("Model trained.")
+
+    # Evaluate the model
+    print("Evaluating model...")
+    model.evaluate(test_pairings)
+    print("Model evaluated.")
+
     print("Done.")
