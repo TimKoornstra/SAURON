@@ -25,6 +25,8 @@ class StyleEmbeddingModel:
 
     def __init__(self,
                  base_model: str = "roberta-base",
+                 name: str = "style-embedding",
+                 model_path: str = None,
                  cache_path: str = ".cache/",
                  output_path: str = "output/") -> None:
         """
@@ -34,13 +36,22 @@ class StyleEmbeddingModel:
         ----------
         base_model : str
             The base model to use for the SentenceTransformer model.
+        name : str
+            The name of the model.
         cache_path : str
             The path to the cache directory.
         output_path : str
             The path to the output directory.
         """
 
-        self.model = SentenceTransformer(base_model, cache_folder=cache_path)
+        if model_path:
+            self.model = SentenceTransformer(model_path,
+                                             cache_folder=cache_path)
+        else:
+            self.model = SentenceTransformer(base_model,
+                                             cache_folder=cache_path)
+
+        self.name = name
         self.output_path = output_path
 
     def train(self,
@@ -94,7 +105,7 @@ class StyleEmbeddingModel:
                        evaluator=evaluator,
                        epochs=epochs,
                        warmup_steps=warmup_steps,
-                       output_path=self.output_path)
+                       output_path=f"{self.output_path}/{self.name}")
 
     def similarity(self,
                    first: Union[str, List[str]],

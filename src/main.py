@@ -34,20 +34,21 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="The path to the cache directory. All temporary\
                                 models and data will be saved here.\
                                 (default: '.cache/')")
-    parser.add_argument("--batch_size", type=int, default=8,
+    parser.add_argument("-b", "--batch_size", type=int, default=8,
                         help="The batch size to use for training.\
                                 (default: 8)")
     parser.add_argument("-e", "--epochs", type=int, default=3,
                         help="The number of epochs to train the model for.\
                                 (default: 3)")
+    parser.add_argument("-m", "--mode", type=str, default="train",
+                        help="The mode to run the script in.\
+                                (default: 'train')")
+    parser.add_argument("--model_path", type=str, default=None,
+                        help="The path to the model to use in interactive mode.\
+                                (default: None)")
 
 
-if __name__ == '__main__':
-    # Parse the input arguments
-    parser = argparse.ArgumentParser()
-    add_arguments(parser)
-    args = parser.parse_args()
-
+def training_mode(args):
     # If the file exists, load the data from the file
     if os.path.exists(f"{args.path}/preprocessed/{args.data_source}_data.pkl"):
         df = load_data(source=args.data_source,
@@ -112,4 +113,41 @@ if __name__ == '__main__':
     model.evaluate(test_pairings)
     print("Model evaluated.")
 
-    print("Done.")
+
+def interactive_mode(model_path):
+    # Load the model
+    model = StyleEmbeddingModel(model_path=model_path)
+
+    while True:
+        # Get the input
+        text = input("Enter a sentence: ")
+
+        text2 = input("Enter another sentence: ")
+
+        # Get the similarity
+        similarity = model.similarity(text, text2)
+
+        # Predict whether the sentences were written by the same author
+        prediction = model._predict_cos(text, text2)
+
+        # Print the embedding
+        print(f"Similarity: {similarity[0]}")
+        print(f"Prediction: {prediction[0]}")
+
+
+if __name__ == '__main__':
+    # Parse the input arguments
+    parser = argparse.ArgumentParser()
+    add_arguments(parser)
+    args = parser.parse_args()
+
+    # Check that the mode is valid
+    assert args.mode in ["train", "interactive"]
+
+    if args.mode == "train":
+        training_mode(args)
+
+    elif args.mode == "interactive":
+        assert args.model_path is not None, "No model path given."
+
+        interactive_mode(args.model_path)
