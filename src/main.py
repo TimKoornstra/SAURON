@@ -11,7 +11,7 @@ from pairings import split_data, create_pairings
 from model import StyleEmbeddingModel
 
 
-def add_arguments(parser):
+def add_arguments(parser: argparse.ArgumentParser):
     """
     Add the arguments to the parser.
 
@@ -19,8 +19,8 @@ def add_arguments(parser):
     ----------
     parser : argparse.ArgumentParser
         The parser to add the arguments to.
-
     """
+
     parser.add_argument("--data_source", type=str, default="reddit",
                         help="The data source to use for the model.\
                                 (default: reddit)")
@@ -37,7 +37,7 @@ def add_arguments(parser):
     parser.add_argument("--batch_size", type=int, default=8,
                         help="The batch size to use for training.\
                                 (default: 8)")
-    parser.add_argument("--epochs", type=int, default=3,
+    parser.add_argument("-e", "--epochs", type=int, default=3,
                         help="The number of epochs to train the model for.\
                                 (default: 3)")
 
