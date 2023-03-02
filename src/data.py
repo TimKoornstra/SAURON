@@ -27,11 +27,23 @@ def load_reddit_corpus(cache_path: str = ".cache/",
         The Reddit Corpus as a Pandas DataFrame.
     """
     # Download the corpus
-    corpus = Corpus(download(corpus_name,
-                             data_dir=f"{cache_path}/{corpus_name}"))
+    print(f"Downloading the {corpus_name} corpus...")
+    file = download(corpus_name, data_dir=f"{cache_path}/{corpus_name}")
+    print("Done!")
+
+    # Load the corpus
+    print("Loading the corpus...")
+    corpus = Corpus(filename=file,
+                    exclude_utterance_meta=["score", "top_level_comment", "retrieved_on",
+                                            "gilded", "gildings", "permalink", "author_flair_text"],
+                    exclude_conversation_meta=["title", "num_comments", "domain", "timestamp",
+                                               "subreddit", "gilded", "gildings", "stickied", "author_flair_text"],
+                    exclude_speaker_meta=["num_posts"])
+    print("Done!")
 
     # Convert the corpus to a Pandas DataFrame
-    corpus = corpus.get_utterances_dataframe()
+    corpus = corpus.get_utterances_dataframe(
+        selector=lambda x: x.speaker.meta["num_comments"] > 1)
 
     # Take only the columns we need
     corpus = corpus[["speaker", "conversation_id",
