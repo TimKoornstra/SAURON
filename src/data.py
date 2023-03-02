@@ -9,9 +9,17 @@ from transformers import RobertaTokenizer
 from tqdm import tqdm
 
 
-def load_reddit_corpus(cache_path: str = ".cache/") -> pd.DataFrame:
+def load_reddit_corpus(cache_path: str = ".cache/",
+                       corpus_name: str = "reddit-corpus") -> pd.DataFrame:
     """
     Load the Reddit Corpus and return it as a Pandas DataFrame.
+
+    Parameters
+    ----------
+    cache_path : str
+        The path to the cache directory.
+    corpus_name : str
+        The name of the corpus.
 
     Returns
     -------
@@ -19,8 +27,8 @@ def load_reddit_corpus(cache_path: str = ".cache/") -> pd.DataFrame:
         The Reddit Corpus as a Pandas DataFrame.
     """
     # Download the corpus
-    corpus = Corpus(download("reddit-corpus",
-                             data_dir=f"{cache_path}/reddit-corpus"))
+    corpus = Corpus(download(corpus_name,
+                             data_dir=f"{cache_path}/{corpus_name}"))
 
     # Convert the corpus to a Pandas DataFrame
     corpus = corpus.get_utterances_dataframe()
@@ -208,7 +216,7 @@ def pipeline(data_source: str = "reddit",
     print("Loading data...")
     # If the data source is Reddit, load the Reddit Corpus
     if data_source == "reddit":
-        df = load_reddit_corpus(cache_path)
+        df = load_reddit_corpus(cache_path=cache_path)
     else:
         raise ValueError(f"Invalid data source: {data_source}")
     print("Data loaded.")

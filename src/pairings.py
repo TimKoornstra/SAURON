@@ -38,6 +38,7 @@ def split_data(df: pd.DataFrame,
     Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
         The train, validation, and test sets.
     """
+    random.seed(42)
 
     # Split the data into train and test sets
     train_test_splitter = GroupShuffleSplit(n_splits=1,
@@ -46,6 +47,10 @@ def split_data(df: pd.DataFrame,
 
     train_idx, test_idx = next(train_test_splitter.split(df,
                                                          groups=df["author_id"]))
+
+    # Shuffle the train set
+    random.shuffle(train_idx)
+
     train, test = df.iloc[train_idx], df.iloc[test_idx]
 
     # Split the test set into validation and test sets (50/50)
@@ -55,6 +60,11 @@ def split_data(df: pd.DataFrame,
 
     val_idx, test_idx = next(val_test_splitter.split(test,
                                                      groups=test["author_id"]))
+
+    # Shuffle the validation and test sets
+    random.shuffle(val_idx)
+    random.shuffle(test_idx)
+
     val, test = test.iloc[val_idx], test.iloc[test_idx]
 
     return train, val, test

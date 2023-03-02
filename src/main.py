@@ -21,20 +21,20 @@ def add_arguments(parser: argparse.ArgumentParser):
         The parser to add the arguments to.
     """
 
-    parser.add_argument("--data_source", type=str, default="reddit",
+    parser.add_argument("--data-source", type=str, default="reddit",
                         help="The data source to use for the model.\
                                 (default: reddit)")
     parser.add_argument("-p", "--path", type=str, default="data/",
                         help="The path to the data directory.\
                                 (default: 'data/')")
-    parser.add_argument("--output_path", type=str, default="output/",
+    parser.add_argument("--output-path", type=str, default="output/",
                         help="The path to the output directory.\
                                 (default: 'output/')")
-    parser.add_argument("--cache_path", type=str, default=".cache/",
+    parser.add_argument("--cache-path", type=str, default=".cache/",
                         help="The path to the cache directory. All temporary\
                                 models and data will be saved here.\
                                 (default: '.cache/')")
-    parser.add_argument("-b", "--batch_size", type=int, default=8,
+    parser.add_argument("-b", "--batch-size", type=int, default=8,
                         help="The batch size to use for training.\
                                 (default: 8)")
     parser.add_argument("-e", "--epochs", type=int, default=3,
@@ -43,7 +43,7 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("-m", "--mode", type=str, default="train",
                         help="The mode to run the script in.\
                                 (default: 'train')")
-    parser.add_argument("--model_path", type=str, default=None,
+    parser.add_argument("--model-path", type=str, default=None,
                         help="The path to the model to use in interactive mode.\
                                 (default: None)")
 

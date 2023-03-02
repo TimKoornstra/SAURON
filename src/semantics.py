@@ -90,12 +90,13 @@ def paraphrase_mining(data: pd.DataFrame,
     )
     print("Paraphrases found.")
 
-    # Remove paraphrases that are the same sentence
+    # Remove paraphrases that are the same sentence or from the same author
     print("Removing duplicates...")
     paraphrases = [
         (score, i, j)
         for score, i, j in paraphrases
-        if data["text"].iloc[i].strip() != data["text"].iloc[j].strip()]
+        if data["text"].iloc[i].strip() != data["text"].iloc[j].strip()
+        & data["author_id"].iloc[i] != data["author_id"].iloc[j]]
     print("Duplicates removed.")
 
     # Convert the paraphrases to a DataFrame
