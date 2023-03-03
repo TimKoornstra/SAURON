@@ -169,7 +169,8 @@ class StyleEmbeddingModel:
         return (cosine_similarities > threshold).int().tolist()
 
     def evaluate(self,
-                 test_data: List[List[str]]) -> None:
+                 test_data: List[List[str]],
+                 threshold: int = 0.5) -> None:
         """
         Evaluate the model.
 
@@ -177,6 +178,8 @@ class StyleEmbeddingModel:
         ----------
         test_data : List[List[str]]
             The test data. The format is the same as the training data.
+        threshold : int
+            The cosine similarity threshold to use for the prediction.
         """
 
         # Load the test dataset
@@ -188,11 +191,7 @@ class StyleEmbeddingModel:
         first, second, actual = zip(*test_data)
 
         # Get the predictions
-        predicted = self._predict_cos(first, second)
-
-        # Print the predictions and the ground truth labels
-        for prediction, label in zip(predicted, actual):
-            print(f"Prediction: {prediction}, Label: {label}")
+        predicted = self._predict_cos(first, second, threshold)
 
         # Get the accuracy of the model
         accuracy = accuracy_score(actual, predicted)

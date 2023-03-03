@@ -3,6 +3,7 @@
 # > Imports
 # Standard Library
 import argparse
+import csv
 import os
 
 # Local
@@ -102,15 +103,21 @@ def training_mode(args):
 
     # Train the model
     print("Training model...")
-    model.train(train_data=train_pairings,
-                val_data=val_pairings,
+    model.train(train_data=train_pairings[:1000000],
+                val_data=val_pairings[:100000],
                 batch_size=args.batch_size,
                 epochs=args.epochs)
     print("Model trained.")
 
+    # Retrieve the optimal cosine threshold for the validation set
+    # It should be the last value in the column "cossim_accuracy_threshold"
+    with open(f"{args.output_path}/{model.name}/\eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
+        reader = csv.DictReader(f)
+        threshold = float(list(reader)[-1]["cossim_accuracy_threshold"])
+
     # Evaluate the model
     print("Evaluating model...")
-    model.evaluate(test_pairings)
+    model.evaluate(test_pairings[:100000], threshold=threshold)
     print("Model evaluated.")
 
 

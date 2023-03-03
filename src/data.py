@@ -33,17 +33,11 @@ def load_reddit_corpus(cache_path: str = ".cache/",
 
     # Load the corpus
     print("Loading the corpus...")
-    corpus = Corpus(filename=file,
-                    exclude_utterance_meta=["score", "top_level_comment", "retrieved_on",
-                                            "gilded", "gildings", "permalink", "author_flair_text"],
-                    exclude_conversation_meta=["title", "num_comments", "domain", "timestamp",
-                                               "subreddit", "gilded", "gildings", "stickied", "author_flair_text"],
-                    exclude_speaker_meta=["num_posts"])
+    corpus = Corpus(filename=file)
     print("Done!")
 
     # Convert the corpus to a Pandas DataFrame
-    corpus = corpus.get_utterances_dataframe(
-        selector=lambda x: x.speaker.meta["num_comments"] > 1)
+    corpus = corpus.get_utterances_dataframe()
 
     # Take only the columns we need
     corpus = corpus[["speaker", "conversation_id",
@@ -115,16 +109,18 @@ def preprocess(df: pd.DataFrame,
             )
         )].index)
 
-        # Remove all utterances from users named "[deleted]" or "MTGCardFetcher"
+        # Remove all utterances from users named "[deleted]", "MTGCardFetcher"
+        # or "AutoModerator"
         df = df.drop(
             df[df["author_id"].str.strip().str.lower()
-               .isin(["[deleted]", "mtgcardfetcher"])].index)
+               .isin(["[deleted]", "mtgcardfetcher", "automoderator"])].index)
 
         # Remove all utterances from users that are likely bots
         # (i.e. users that have a username that contains "bot" or all of their
         # utterances contain the word "bot")
-        df = df.drop(df[(df["author_id"].str.lower().str.contains(
-            "bot", regex=False, case=False)) |
+        df = df.drop(df[
+            (df["author_id"].str.lower().str.contains(
+                "bot", regex=False, case=False)) |
             (df["text"].str.lower().str.contains(
                 "bot", regex=False, case=False))].index)
 
@@ -174,7 +170,8 @@ def create_subset(df: pd.DataFrame,
     m = n // n_groups
 
     # Create the subset
-    df2 = df.groupby(group).head(m).copy(deep=True)
+    df2 = df.groupby("conversation_id").head(
+        10).groupby(group).head(m).copy(deep=True)
 
     # Create new IDs for the authors and conversations
     df2.loc[:, "author_id"] = df2.groupby("author_id").ngroup()
@@ -182,6 +179,9 @@ def create_subset(df: pd.DataFrame,
 
     # Reset the index
     df2 = df2.reset_index(drop=True)
+
+    print(
+        f"Collected {df2.shape[0]} utterances from {df2['author_id'].nunique()} authors in {df2['conversation_id'].nunique()} conversations.")
 
     return df2
 
