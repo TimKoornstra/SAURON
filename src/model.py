@@ -1,10 +1,15 @@
 # > Imports
+# Standard Library
+import os
+import random
+
 # Third Party
-from torch.utils.data import DataLoader
+import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score
 from sentence_transformers import SentenceTransformer, losses, InputExample, evaluation
 from sentence_transformers.util import cos_sim
 import torch
+from torch.utils.data import DataLoader
 
 # Local
 from utils import contrastive_to_binary
@@ -80,9 +85,16 @@ class StyleEmbeddingModel:
         train_examples = [InputExample(texts=texts, label=1)
                           for texts in train_data]
 
+        # Convert to binary classification
+        train_data = contrastive_to_binary(train_examples)
+
+        train_examples = [InputExample(texts=[text1, text2], label=label)
+                          for text1, text2, label in train_data]
+
         train_dataloader = DataLoader(
             train_examples, shuffle=True, batch_size=batch_size)
-        train_loss = losses.MultipleNegativesRankingLoss(self.model)
+        # train_loss = losses.MultipleNegativesRankingLoss(self.model)
+        train_loss = losses.ContrastiveLoss(self.model)
 
         # Load the validation dataset
         val_examples = [InputExample(texts=texts, label=1)
@@ -168,8 +180,57 @@ class StyleEmbeddingModel:
         # Return the predictions
         return (cosine_similarities > threshold).int().tolist()
 
+    def _predict_STEL(self,
+                      dir_path: str):
+        """
+        Use the STEL framework to evaluate the model's ability to separate
+        style from content.
+
+        Parameters
+        ----------
+        dir_path : str
+            The path to the directory containing the STEL tasks.
+        """
+        # Load the task instances
+        for file in os.listdir(dir_path):
+            if file.endswith(".tsv"):
+                task = pd.read_csv(f"{dir_path}/{file}",
+                                   sep="\t")
+
+                task_name = task["style type"].iloc[0]
+
+                # Create a list to store the predictions
+                predictions = []
+
+                for i, row in task.iterrows():
+                    # Calculate the similarities between A1, A2, S1, and S2
+                    A1_S1 = self.similarity(row["Anchor 1"], row["Sentence 1"])
+                    A1_S2 = self.similarity(row["Anchor 1"], row["Sentence 2"])
+                    A2_S1 = self.similarity(row["Anchor 2"], row["Sentence 1"])
+                    A2_S2 = self.similarity(row["Anchor 2"], row["Sentence 2"])
+
+                    # Calculate the left and right hand sides of equation (1) from
+                    # the paper https://aclanthology.org/2021.emnlp-main.569.pdf
+                    lhs = (1 - A1_S1)**2 + (1 - A2_S2)**2
+                    rhs = (1 - A1_S2)**2 + (1 - A2_S1)**2
+
+                    # Get the prediction
+                    if lhs < rhs:
+                        predictions.append(1)
+                    if lhs > rhs:
+                        predictions.append(2)
+                    if lhs == rhs:
+                        predictions.append(random.choice([1, 2]))
+
+                # Calculate the accuracy of the model on this task
+                accuracy = accuracy_score(
+                    task["Correct Alternative"], predictions)
+
+                print(f"Accuracy on {task_name}: {accuracy}")
+
     def evaluate(self,
                  test_data: List[List[str]],
+                 stel_dir: str = None,
                  threshold: int = 0.5) -> None:
         """
         Evaluate the model.
@@ -195,8 +256,8 @@ class StyleEmbeddingModel:
 
         # Get the accuracy of the model
         accuracy = accuracy_score(actual, predicted)
-        print(f"Accuracy: {accuracy}")
+        print(f"Accuracy on the AV task: {accuracy}")
 
-        # Get the F1 score of the model
-        f1 = f1_score(actual, predicted)
-        print(f"F1: {f1}")
+        # Get the predictions for the STEL tasks
+        if stel_dir is not None:
+            self._predict_STEL(stel_dir)

@@ -99,7 +99,8 @@ def training_mode(args):
     # Create the model
     model = StyleEmbeddingModel(base_model="roberta-base",
                                 cache_path=args.cache_path,
-                                output_path=args.output_path)
+                                output_path=args.output_path,
+                                name="style-cv")
 
     # Train the model
     print("Training model...")
@@ -111,13 +112,15 @@ def training_mode(args):
 
     # Retrieve the optimal cosine threshold for the validation set
     # It should be the last value in the column "cossim_accuracy_threshold"
-    with open(f"{args.output_path}/{model.name}/\eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
+    with open(f"{args.output_path}/{model.name}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
         reader = csv.DictReader(f)
         threshold = float(list(reader)[-1]["cossim_accuracy_threshold"])
 
     # Evaluate the model
     print("Evaluating model...")
-    model.evaluate(test_pairings[:100000], threshold=threshold)
+    model.evaluate(test_pairings[:100000],
+                   threshold=threshold,
+                   stel_dir=f"{args.output_path}/STEL/")
     print("Model evaluated.")
 
 
