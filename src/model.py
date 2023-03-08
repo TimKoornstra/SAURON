@@ -5,15 +5,16 @@ import random
 
 # Third Party
 import pandas as pd
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score
 from sentence_transformers import SentenceTransformer, losses, InputExample, evaluation
 from sentence_transformers.util import cos_sim
 import torch
 from torch.utils.data import DataLoader
+import tqdm
 
 # Local
 from utils import contrastive_to_binary
-from typing import List, Union
+from typing import List, Tuple, Union
 
 
 class StyleEmbeddingModel:
@@ -180,6 +181,20 @@ class StyleEmbeddingModel:
         # Return the predictions
         return (cosine_similarities > threshold).int().tolist()
 
+    def _predict_cav(self,
+                     anchor: Union[str, List[str]],
+                     first: Union[str, List[str]],
+                     second: Union[str, List[str]]) -> List[int]:
+
+        assert len(anchor) == len(first) == len(second)
+
+        # Get the similarity between the anchor and the other sentences
+        A1_S1 = self.similarity(anchor, first)
+        A1_S2 = self.similarity(anchor, second)
+
+        # Return the prediction
+        return (A1_S1 > A1_S2).int().tolist()
+
     def _predict_STEL(self,
                       dir_path: str):
         """
@@ -204,10 +219,14 @@ class StyleEmbeddingModel:
 
                 for i, row in task.iterrows():
                     # Calculate the similarities between A1, A2, S1, and S2
-                    A1_S1 = self.similarity(row["Anchor 1"], row["Sentence 1"])
-                    A1_S2 = self.similarity(row["Anchor 1"], row["Sentence 2"])
-                    A2_S1 = self.similarity(row["Anchor 2"], row["Sentence 1"])
-                    A2_S2 = self.similarity(row["Anchor 2"], row["Sentence 2"])
+                    A1_S1 = self.similarity(
+                        row["Anchor 1"], row["Alternative 1.1"])
+                    A1_S2 = self.similarity(
+                        row["Anchor 1"], row["Alternative 1.2"])
+                    A2_S1 = self.similarity(
+                        row["Anchor 2"], row["Alternative 1.1"])
+                    A2_S2 = self.similarity(
+                        row["Anchor 2"], row["Alternative 1.2"])
 
                     # Calculate the left and right hand sides of equation (1) from
                     # the paper https://aclanthology.org/2021.emnlp-main.569.pdf
@@ -244,20 +263,34 @@ class StyleEmbeddingModel:
         """
 
         # Load the test dataset
+        anchor_cav, first_cav, second_cav = zip(*test_data)
+
         test_examples = [InputExample(texts=texts, label=1)
                          for texts in test_data]
         test_data = contrastive_to_binary(test_examples)
 
+        print("Evaluating on the AV task...")
         # Predict the labels for the test data
-        first, second, actual = zip(*test_data)
+        first_av, second_av, actual_av = zip(*test_data)
 
         # Get the predictions
-        predicted = self._predict_cos(first, second, threshold)
+        predicted_av = self._predict_cos(first_av, second_av, threshold)
 
         # Get the accuracy of the model
-        accuracy = accuracy_score(actual, predicted)
-        print(f"Accuracy on the AV task: {accuracy}")
+        accuracy_av = accuracy_score(actual_av, predicted_av)
+        print(f"Accuracy on the AV task: {accuracy_av}")
+
+        # Get the predictions for the CAV task
+        print("Evaluating on the CAV task...")
+
+        predicted_cav = self._predict_cav(anchor_cav, first_cav, second_cav)
+
+        actual_cav = [1] * len(anchor_cav)
+        accuracy_cav = accuracy_score(actual_cav, predicted_cav)
+
+        print(f"Accuracy on the CAV task: {accuracy_cav}")
 
         # Get the predictions for the STEL tasks
         if stel_dir is not None:
+            print("Evaluating on the STEL tasks...")
             self._predict_STEL(stel_dir)

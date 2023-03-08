@@ -5,6 +5,7 @@
 import argparse
 import csv
 import os
+import pickle
 
 # Local
 from data import pipeline, load_data
@@ -114,19 +115,37 @@ def training_mode(args):
     # It should be the last value in the column "cossim_accuracy_threshold"
     with open(f"{args.output_path}/{model.name}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
         reader = csv.DictReader(f)
-        threshold = float(list(reader)[-1]["cossim_accuracy_threshold"])
+
+        # Take the index of the highest value in the column "cossim_accuracy"
+        # and use that index to get the threshold
+        index = reader["cossim_accuracy"].index(max(reader["cossim_accuracy"]))
+        threshold = float(list(reader)[index]["cossim_accuracy_threshold"])
 
     # Evaluate the model
     print("Evaluating model...")
     model.evaluate(test_pairings[:100000],
                    threshold=threshold,
-                   stel_dir=f"{args.output_path}/STEL/")
+                   stel_dir=f"{args.path}/STEL/")
     print("Model evaluated.")
 
 
 def interactive_mode(model_path):
     # Load the model
     model = StyleEmbeddingModel(model_path=model_path)
+
+    with open(f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
+        reader = list(csv.DictReader(f))
+
+    highest_accuracy = 0
+    index = 0
+    for i, row in enumerate(reader):
+        if float(row["cossim_accuracy"]) > highest_accuracy:
+            highest_accuracy = float(row["cossim_accuracy"])
+            index = i
+
+    # Take the index of the highest value in the column "cossim_accuracy"
+    # and use that index to get the threshold
+    threshold = float(reader[index]["cossim_accuracy_threshold"])
 
     while True:
         # Get the input
@@ -138,11 +157,48 @@ def interactive_mode(model_path):
         similarity = model.similarity(text, text2)
 
         # Predict whether the sentences were written by the same author
-        prediction = model._predict_cos(text, text2)
+        prediction = model._predict_cos(text, text2, threshold=threshold)
 
         # Print the embedding
         print(f"Similarity: {similarity[0]}")
         print(f"Prediction: {prediction[0]}")
+
+
+def evaluate_mode(model_path, data_path):
+
+    print("Evaluating model...")
+    # Load the model
+    print("Loading model...")
+    model = StyleEmbeddingModel(model_path=model_path)
+
+    with open(f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
+        reader = list(csv.DictReader(f))
+
+    highest_accuracy = 0
+    index = 0
+    for i, row in enumerate(reader):
+        if float(row["cossim_accuracy"]) > highest_accuracy:
+            highest_accuracy = float(row["cossim_accuracy"])
+            index = i
+
+    # Take the index of the highest value in the column "cossim_accuracy"
+    # and use that index to get the threshold
+    threshold = float(reader[index]["cossim_accuracy_threshold"])
+
+    print("Model loaded.")
+
+    # Load the data
+    print("Loading data...")
+    with open(f"{data_path}/paired/test-pairings.pkl", "rb") as f:
+        data = pickle.load(f)
+    print("Data loaded.")
+
+    # Evaluate the model
+    print("Evaluating model...")
+    model.evaluate(data[:100000],
+                   stel_dir=f"{data_path}/STEL/",
+                   threshold=threshold)
+    print("Model evaluated.")
 
 
 if __name__ == '__main__':
@@ -152,7 +208,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Check that the mode is valid
-    assert args.mode in ["train", "interactive"]
+    assert args.mode in ["train", "interactive", "evaluate"]
 
     if args.mode == "train":
         training_mode(args)
@@ -161,3 +217,9 @@ if __name__ == '__main__':
         assert args.model_path is not None, "No model path given."
 
         interactive_mode(args.model_path)
+
+    elif args.mode == "evaluate":
+        assert args.model_path is not None, "No model path given."
+        assert args.path is not None, "No data path given."
+
+        evaluate_mode(args.model_path, args.path)
