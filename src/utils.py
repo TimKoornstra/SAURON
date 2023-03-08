@@ -1,5 +1,6 @@
 # > Imports
 # Standard Library
+import csv
 from typing import List, Tuple
 
 # Third Party
@@ -38,3 +39,31 @@ def contrastive_to_binary(examples: List[InputExample])\
                 (example.texts[0], example.texts[i], 0))
 
     return binary_pairings
+
+
+def get_threshold(results_path: str) -> float:
+    """
+    Get the thresholds from the results file.
+
+    Parameters
+    ----------
+    results_path : str
+        The path to the results file.
+
+    Returns
+    -------
+    float
+        The threshold.
+    """
+
+    with open(results_path, newline="") as f:
+        reader = list(csv.DictReader(f))
+
+    highest_accuracy = 0
+    index = 0
+    for i, row in enumerate(reader):
+        if float(row["cossim_accuracy"]) > highest_accuracy:
+            highest_accuracy = float(row["cossim_accuracy"])
+            index = i
+
+    return float(reader[index]["cossim_accuracy_threshold"])

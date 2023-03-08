@@ -11,6 +11,7 @@ import pickle
 from data import pipeline, load_data
 from pairings import split_data, create_pairings
 from model import StyleEmbeddingModel
+from utils import get_threshold
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -112,14 +113,8 @@ def training_mode(args):
     print("Model trained.")
 
     # Retrieve the optimal cosine threshold for the validation set
-    # It should be the last value in the column "cossim_accuracy_threshold"
-    with open(f"{args.output_path}/{model.name}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
-        reader = csv.DictReader(f)
-
-        # Take the index of the highest value in the column "cossim_accuracy"
-        # and use that index to get the threshold
-        index = reader["cossim_accuracy"].index(max(reader["cossim_accuracy"]))
-        threshold = float(list(reader)[index]["cossim_accuracy_threshold"])
+    threshold = get_threshold(
+        f"{args.output_path}/{model.name}/eval/binary_classification_evaluation_val_loss_results.csv")
 
     # Evaluate the model
     print("Evaluating model...")
@@ -133,19 +128,8 @@ def interactive_mode(model_path):
     # Load the model
     model = StyleEmbeddingModel(model_path=model_path)
 
-    with open(f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
-        reader = list(csv.DictReader(f))
-
-    highest_accuracy = 0
-    index = 0
-    for i, row in enumerate(reader):
-        if float(row["cossim_accuracy"]) > highest_accuracy:
-            highest_accuracy = float(row["cossim_accuracy"])
-            index = i
-
-    # Take the index of the highest value in the column "cossim_accuracy"
-    # and use that index to get the threshold
-    threshold = float(reader[index]["cossim_accuracy_threshold"])
+    threshold = get_threshold(
+        f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv")
 
     while True:
         # Get the input
@@ -171,19 +155,8 @@ def evaluate_mode(model_path, data_path):
     print("Loading model...")
     model = StyleEmbeddingModel(model_path=model_path)
 
-    with open(f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv", newline="") as f:
-        reader = list(csv.DictReader(f))
-
-    highest_accuracy = 0
-    index = 0
-    for i, row in enumerate(reader):
-        if float(row["cossim_accuracy"]) > highest_accuracy:
-            highest_accuracy = float(row["cossim_accuracy"])
-            index = i
-
-    # Take the index of the highest value in the column "cossim_accuracy"
-    # and use that index to get the threshold
-    threshold = float(reader[index]["cossim_accuracy_threshold"])
+    threshold = get_threshold(
+        f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv")
 
     print("Model loaded.")
 
