@@ -71,10 +71,11 @@ def split_data(df: pd.DataFrame,
 
 
 def create_pairings(df: pd.DataFrame,
-                    max_negative: int = 7,
-                    semantic_range: Tuple[float, float] = (0.95, 0.99),
-                    output_path: str = None,
-                    output_name: str = "") -> List[List[str]]:
+                    output_path: str,
+                    output_name: str,
+                    max_negative: int = 1,
+                    semantic_range: Tuple[float, float] = (0.7, 1.0),
+                    semantic_proportion: float = 0.5) -> List[List[str]]:
     """
     Create the pairings for the data. The pairings are created by taking
     each sentence and finding the n most similar sentences. The most similar
@@ -88,6 +89,8 @@ def create_pairings(df: pd.DataFrame,
         The number of negative examples to create for each positive example.
     semantic_range : Tuple[float, float]
         The inclusive range of semantic similarity to use for semantic filtering.
+    semantic_proportion : float
+        The proportion of the pairings to be semantic.
     output_path : str
         The path to save the pairings to.
     output_name : str
@@ -99,36 +102,30 @@ def create_pairings(df: pd.DataFrame,
         The list of pairings.
     """
     # Check if the pairings have already been created
-    if output_path:
-        try:
-            print("Loading pairings locally...")
-            with open(f"{output_path}/paired/{output_name}-pairings.pkl", "rb") as f:
-                pairings = pickle.load(f)
-            print("Pairings loaded.")
-            return pairings
-        except FileNotFoundError:
-            print("Pairings not found. Calculating...")
+    try:
+        print("Loading pairings locally...")
+        with open(f"{output_path}/paired/{output_name}-pairings.pkl", "rb") as f:
+            regular_pairings = pickle.load(f)
+        print("Pairings loaded.")
+        return regular_pairings
+    except FileNotFoundError:
+        print("Pairings not found. Calculating...")
 
-    s_pairings = []
-    pairings = []
+    semantic_pairings = []
+    regular_pairings = []
 
     # Reset the index, so that the index is the same as the row number
     df = df.reset_index(drop=True)
 
     # First, we need to calculate the semantic similarity between each
     # pair of sentences.
-    if output_path:
-        try:
-            print("Loading paraphrases locally...")
-            with open(f"{output_path}/paraphrases/{output_name}-paraphrases.pkl", "rb") as f:
-                paraphrases = pickle.load(f)
-            print("Paraphrases loaded.")
-        except FileNotFoundError:
-            print("Paraphrases not found. Calculating...")
-            paraphrases = paraphrase_mining(df,
-                                            output_path=output_path,
-                                            output_name=output_name)
-    else:
+    try:
+        print("Loading paraphrases locally...")
+        with open(f"{output_path}/paraphrases/{output_name}-paraphrases.pkl", "rb") as f:
+            paraphrases = pickle.load(f)
+        print("Paraphrases loaded.")
+    except FileNotFoundError:
+        print("Paraphrases not found. Calculating...")
         paraphrases = paraphrase_mining(df,
                                         output_path=output_path,
                                         output_name=output_name)
@@ -193,23 +190,22 @@ def create_pairings(df: pd.DataFrame,
         temp_pairings = []
         temp_s_pairings = []
 
+        # Iterate through each author
         for author_id, sentences in authors:
+
             # Iterate through each sentence
             for i in range(len(sentences)):
-                # First, verify that there are enough paraphrases to create the
-                # negative examples
-                if len(paraphrases[sentences[i]]) < max_negative:
-                    continue
-
-                # Create the positive examples
-                # Find the unique pairings of sentences
-                neg_pairings = set()
-
                 anchor = lookup[sentences[i]]
 
-                for j in range(i+1, len(sentences)):
+                # Count the number of paraphrases used for this anchor
+                n_anchor_paraphrases = 0
 
-                    # Create a predetermined size list of the example, so that
+                # Iterate through the rest of the sentences by the same author.
+                # We include the current sentence, so that the model can learn
+                # that semantically similar is not necessarily a different
+                # author.
+                for j in range(i, len(sentences)):
+                    # Create a predetermined size list of the examples, so that
                     # it contains the anchor, the positive example, and the
                     # negative examples
                     example = [None] * (max_negative + 2)
@@ -219,48 +215,39 @@ def create_pairings(df: pd.DataFrame,
                     example[0] = anchor
                     example[1] = pos
 
+                    # Set the number of negative examples for this positive
+                    # example to 0 and a flag to check if all the negative
+                    # examples are semantically similar
                     n_neg = 0
+                    all_similar = False
 
-                    for k in range(len(neg_pairings), len(paraphrases[sentences[i]])):
-                        # Check if there are enough paraphrases left to create
-                        # the negative examples
-                        if len(paraphrases[sentences[i]]) - k < max_negative - n_neg:
-                            break
-
+                    for k in range(n_anchor_paraphrases, len(paraphrases[sentences[i]])):
                         # Get the index of the paraphrase
                         idx_2 = paraphrases[sentences[i]][k]
 
-                        # If the paraphrase is not by the same author, add it
-                        if idx_2 not in sentences:
-                            # Add the pairing to the list
-                            example[n_neg + 2] = lookup[idx_2]
-                            temp_s_pairings.append(
-                                (lookup[sentences[i]], lookup[idx_2]))
+                        # Add the pairing to the list
+                        example[n_neg + 2] = lookup[idx_2]
 
-                            # Add the pairing to the set of negative pairings
-                            neg_pairings.add((sentences[i], idx_2))
+                        # Increment the number of negative examples
+                        n_neg += 1
 
-                            # Increment the number of negative examples
-                            n_neg += 1
+                        # Increment the number of paraphrases used for this
+                        # anchor
+                        n_anchor_paraphrases += 1
 
-                            # If we have enough negative examples, break
-                            if n_neg >= max_negative:
-                                break
+                        # If we have enough negative examples, break
+                        if n_neg >= max_negative:
+                            all_similar = True
+                            break
 
-                    if n_neg < max_negative:
-                        continue
-
-                    """
                     # If we do not have enough negative examples, we need to
                     # create some random negative examples
                     while n_neg < max_negative:
                         # Get a random sentence from a random author
-                        random_author = random.choice(data_keys)
-
                         # Make sure that the random author is not the same as
                         # current author
-                        while random_author == author_id:
-                            random_author = random.choice(data_keys)
+                        while (random_author := random.choice(data_keys)) == author_id:
+                            continue
 
                         random_sentence = random.choice(data[random_author])
 
@@ -269,10 +256,12 @@ def create_pairings(df: pd.DataFrame,
 
                         # Increment the number of negative examples
                         n_neg += 1
-                    """
 
                     # Add the example to the list of examples
-                    temp_pairings.append(example)
+                    if all_similar:
+                        temp_s_pairings.append(example)
+                    else:
+                        temp_pairings.append(example)
 
         return (temp_pairings, temp_s_pairings)
 
@@ -282,24 +271,32 @@ def create_pairings(df: pd.DataFrame,
 
     # Flatten the list of lists and separate the pairings and semantic pairings
     for result in results:
-        pairings += result[0]
-        s_pairings += result[1]
-
-    # Print the first example of each list
-    print(pairings[0])
-    print(s_pairings[0])
+        regular_pairings += result[0]
+        semantic_pairings += result[1]
 
     # End the timer and print the time it took to create the pairings
     end = time.time()
-    print(f"Created {len(pairings)} pairings in {end-start} seconds.")
+    print(
+        f"Created {len(regular_pairings) + len(semantic_pairings)} pairings in {end-start} seconds.")
 
-    print(f"Found {len(s_pairings)} semantic pairings.")
+    print(f"Found {len(semantic_pairings)} semantic pairings.")
+
+    # Combine the pairings and the semantic pairings such that the semantic
+    # pairings are first in the list and the regular pairings are second,
+    # following the semantic_proportion constraint
+    n_semantic = int(len(regular_pairings) * semantic_proportion)
+    n_regular = len(regular_pairings) - n_semantic
+
+    print(
+        f"Using {n_semantic} semantic pairings and {n_regular} regular pairings.")
+
+    # Combine the pairings and the semantic pairings
+    pairings = semantic_pairings[:n_semantic] + regular_pairings[:n_regular]
 
     # Save the pairings
-    if output_path:
-        with open(f"{output_path}/paired/{output_name}-pairings.pkl", "wb") as f:
-            pickle.dump(pairings, f)
-        with open(f"{output_path}/paired/{output_name}-s_pairings.pkl", "wb") as f:
-            pickle.dump(s_pairings, f)
+    with open(f"{output_path}/paired/{output_name}-pairings.pkl", "wb") as f:
+        pickle.dump(pairings, f)
+    with open(f"{output_path}/paired/{output_name}-s_pairings.pkl", "wb") as f:
+        pickle.dump(semantic_pairings, f)
 
     return pairings

@@ -142,36 +142,20 @@ def preprocess(df: pd.DataFrame,
     return df
 
 
-def create_subset(df: pd.DataFrame,
-                  n: int,
-                  group: str = "subreddit") -> pd.DataFrame:
+def anonymize_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create a subset of the given DataFrame.
+    Anonymize the given DataFrame.
 
     Parameters
     ----------
     df : pd.DataFrame
         The DataFrame to create a subset of.
-    n : int
-        The number of items in the subset.
-    group : str
-        The column to group by.
 
     Returns
     -------
     pd.DataFrame
-        The subset of the given DataFrame.
+        The anonymized DataFrame.
     """
-    # Create a subset of the DataFrame
-    # Count the number of groups
-    n_groups = df[group].value_counts().shape[0]
-
-    # Take the first m items from each group such that the total number of items is n
-    m = n // n_groups
-
-    # Create the subset
-    # df2 = df.groupby("conversation_id").head(
-    #     10).groupby(group).head(m).copy(deep=True)
     df2 = df.copy(deep=True)
 
     # Create new IDs for the authors and conversations
@@ -241,10 +225,9 @@ def pipeline(data_source: str = "reddit",
     print("Data preprocessed.")
 
     # Create a subset of the DataFrame
-    print("Creating subset...")
-    df = create_subset(df=df,
-                       n=1000000)
-    print("Subset created.")
+    print("Anonymizing data...")
+    df = anonymize_data(df=df)
+    print("Data anonymized.")
 
     if output_path:
         # Save the DataFrame
