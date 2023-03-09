@@ -170,8 +170,9 @@ def create_subset(df: pd.DataFrame,
     m = n // n_groups
 
     # Create the subset
-    df2 = df.groupby("conversation_id").head(
-        10).groupby(group).head(m).copy(deep=True)
+    # df2 = df.groupby("conversation_id").head(
+    #     10).groupby(group).head(m).copy(deep=True)
+    df2 = df.copy(deep=True)
 
     # Create new IDs for the authors and conversations
     df2.loc[:, "author_id"] = df2.groupby("author_id").ngroup()

@@ -196,6 +196,11 @@ def create_pairings(df: pd.DataFrame,
         for author_id, sentences in authors:
             # Iterate through each sentence
             for i in range(len(sentences)):
+                # First, verify that there are enough paraphrases to create the
+                # negative examples
+                if len(paraphrases[sentences[i]]) < max_negative:
+                    continue
+
                 # Create the positive examples
                 # Find the unique pairings of sentences
                 neg_pairings = set()
@@ -203,6 +208,7 @@ def create_pairings(df: pd.DataFrame,
                 anchor = lookup[sentences[i]]
 
                 for j in range(i+1, len(sentences)):
+
                     # Create a predetermined size list of the example, so that
                     # it contains the anchor, the positive example, and the
                     # negative examples
@@ -216,6 +222,11 @@ def create_pairings(df: pd.DataFrame,
                     n_neg = 0
 
                     for k in range(len(neg_pairings), len(paraphrases[sentences[i]])):
+                        # Check if there are enough paraphrases left to create
+                        # the negative examples
+                        if len(paraphrases[sentences[i]]) - k < max_negative - n_neg:
+                            break
+
                         # Get the index of the paraphrase
                         idx_2 = paraphrases[sentences[i]][k]
 
@@ -236,6 +247,10 @@ def create_pairings(df: pd.DataFrame,
                             if n_neg >= max_negative:
                                 break
 
+                    if n_neg < max_negative:
+                        continue
+
+                    """
                     # If we do not have enough negative examples, we need to
                     # create some random negative examples
                     while n_neg < max_negative:
@@ -254,6 +269,7 @@ def create_pairings(df: pd.DataFrame,
 
                         # Increment the number of negative examples
                         n_neg += 1
+                    """
 
                     # Add the example to the list of examples
                     temp_pairings.append(example)
