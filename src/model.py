@@ -10,11 +10,10 @@ from sentence_transformers import SentenceTransformer, losses, InputExample, eva
 from sentence_transformers.util import cos_sim
 import torch
 from torch.utils.data import DataLoader
-import tqdm
 
 # Local
 from utils import contrastive_to_binary
-from typing import List, Tuple, Union
+from typing import List, Union
 
 
 class StyleEmbeddingModel:
@@ -140,8 +139,10 @@ class StyleEmbeddingModel:
         """
 
         # Get the embeddings for the sentences
-        embeddings1 = self.model.encode(first)
-        embeddings2 = self.model.encode(second)
+        embeddings1 = self.model.encode(
+            first, device="cuda")
+        embeddings2 = self.model.encode(
+            second, device="cuda")
 
         # Calculate the cosine similarity between the embeddings
         if isinstance(first, str):
@@ -247,6 +248,37 @@ class StyleEmbeddingModel:
 
                 print(f"Accuracy on {task_name}: {accuracy}")
 
+    def _predict_STEL_oc(self,
+                         dir_path: str):
+
+        # Load the task instances
+        for file in os.listdir(dir_path):
+            if file.endswith(".tsv"):
+                task = pd.read_csv(f"{dir_path}/{file}",
+                                   sep="\t")
+
+                task_name = task["style type"].iloc[0]
+
+                # Create a list to store the predictions
+                predictions = []
+
+                for i, row in task.iterrows():
+                    # Keep the sentence with the same style
+                    if row["Correct Alternative"] == 1:
+                        same_style = row["Alternative 1.1"]
+                    else:
+                        same_style = row["Alternative 1.2"]
+
+                    # Now it is a CAV task
+                    predictions.append(self._predict_cav(
+                        [row["Anchor 1"]], [same_style], [row["Anchor 2"]])[0])
+
+                # Calculate the accuracy of the model on this task
+                accuracy = accuracy_score(
+                    [0]*len(task), predictions)
+
+                print(f"Accuracy on {task_name}: {accuracy}")
+
     def evaluate(self,
                  test_data: List[List[str]],
                  stel_dir: str = None,
@@ -261,7 +293,6 @@ class StyleEmbeddingModel:
         threshold : int
             The cosine similarity threshold to use for the prediction.
         """
-
         # Load the test dataset
         anchor_cav, first_cav, second_cav = zip(*test_data)
 
@@ -294,3 +325,6 @@ class StyleEmbeddingModel:
         if stel_dir is not None:
             print("Evaluating on the STEL tasks...")
             self._predict_STEL(stel_dir)
+
+            print("Evaluating on the STEL OC tasks...")
+            self._predict_STEL_oc(stel_dir)

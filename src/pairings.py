@@ -48,9 +48,6 @@ def split_data(df: pd.DataFrame,
     train_idx, test_idx = next(train_test_splitter.split(df,
                                                          groups=df["author_id"]))
 
-    # Shuffle the train set
-    random.shuffle(train_idx)
-
     train, test = df.iloc[train_idx], df.iloc[test_idx]
 
     # Split the test set into validation and test sets (50/50)
@@ -60,10 +57,6 @@ def split_data(df: pd.DataFrame,
 
     val_idx, test_idx = next(val_test_splitter.split(test,
                                                      groups=test["author_id"]))
-
-    # Shuffle the validation and test sets
-    random.shuffle(val_idx)
-    random.shuffle(test_idx)
 
     val, test = test.iloc[val_idx], test.iloc[test_idx]
 
@@ -204,7 +197,7 @@ def create_pairings(df: pd.DataFrame,
                 # We include the current sentence, so that the model can learn
                 # that semantically similar is not necessarily a different
                 # author.
-                for j in range(i, len(sentences)):
+                for j in range(i+1, len(sentences)):
                     # Create a predetermined size list of the examples, so that
                     # it contains the anchor, the positive example, and the
                     # negative examples
@@ -284,14 +277,18 @@ def create_pairings(df: pd.DataFrame,
     # Combine the pairings and the semantic pairings such that the semantic
     # pairings are first in the list and the regular pairings are second,
     # following the semantic_proportion constraint
-    n_semantic = int(len(regular_pairings) * semantic_proportion)
-    n_regular = len(regular_pairings) - n_semantic
+    n_regular = int(((1 - semantic_proportion) *
+                     len(semantic_pairings)) / semantic_proportion)
 
     print(
-        f"Using {n_semantic} semantic pairings and {n_regular} regular pairings.")
+        f"Using {len(semantic_pairings)} semantic pairings and {min(n_regular,len(regular_pairings))} regular pairings.")
 
     # Combine the pairings and the semantic pairings
-    pairings = semantic_pairings[:n_semantic] + regular_pairings[:n_regular]
+    pairings = semantic_pairings + regular_pairings[:n_regular]
+
+    # Shuffle the pairings
+    random.seed(42)
+    random.shuffle(pairings)
 
     # Save the pairings
     with open(f"{output_path}/paired/{output_name}-pairings.pkl", "wb") as f:

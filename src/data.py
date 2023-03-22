@@ -52,6 +52,15 @@ def load_reddit_corpus(cache_path: str = ".cache/",
         },
     )
 
+    # Print corpus statistics
+    print("Corpus statistics:")
+    print(f"Number of authors: {len(corpus['author_id'].unique())}")
+    print(f"Number of sentences: {len(corpus)}")
+    print(
+        f"Number of sentences per author: {len(corpus) / len(corpus['author_id'].unique())}")
+    print(
+        f"Number of conversations: {len(corpus['conversation_id'].unique())}")
+
     return corpus
 
 
@@ -138,6 +147,10 @@ def preprocess(df: pd.DataFrame,
         lambda x: len(tokenizer.encode(x)) > 512)].index)
 
     print(f"Number of utterances: {df.shape[0]}")
+    print(f"Number of authors: {df['author_id'].nunique()}")
+    print(f"Number of conversations: {df['conversation_id'].nunique()}")
+    print(
+        f"Number of utterances per author: {df.shape[0] / df['author_id'].nunique()}")
 
     return df
 
