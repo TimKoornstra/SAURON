@@ -117,11 +117,11 @@ def training_mode(args):
     model = StyleEmbeddingModel(base_model="roberta-base",
                                 cache_path=args.cache_path,
                                 output_path=args.output_path,
-                                name="style-cv")
+                                name=f"style-nosem-{args.epochs}-{args.batch_size}")
 
     # Train the model
     print("Training model...")
-    model.train(train_data=train_pairings[:1000000],
+    model.train(train_data=train_pairings[:724243],
                 val_data=val_pairings[:100000],
                 batch_size=args.batch_size,
                 epochs=args.epochs)

@@ -80,21 +80,15 @@ class StyleEmbeddingModel:
         epochs : int
             The number of epochs to train the model for.
         """
+        print(f"Training on {len(train_data)} examples for {epochs} epochs, using a batch size of {batch_size}")
 
         # Load the train dataset
         train_examples = [InputExample(texts=texts, label=1)
                           for texts in train_data]
 
-        # Convert to binary classification
-        train_data = contrastive_to_binary(train_examples)
-
-        train_examples = [InputExample(texts=[text1, text2], label=label)
-                          for text1, text2, label in train_data]
-
         train_dataloader = DataLoader(
             train_examples, shuffle=True, batch_size=batch_size)
-        # train_loss = losses.MultipleNegativesRankingLoss(self.model)
-        train_loss = losses.ContrastiveLoss(self.model)
+        train_loss = losses.MultipleNegativesRankingLoss(self.model)
 
         # Load the validation dataset
         val_examples = [InputExample(texts=texts, label=1)
