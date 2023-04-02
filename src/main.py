@@ -3,10 +3,8 @@
 # > Imports
 # Standard Library
 import argparse
-import csv
 import os
 import pickle
-from sklearn.metrics import roc_auc_score
 
 # Local
 from data import pipeline, load_data

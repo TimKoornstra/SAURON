@@ -188,7 +188,7 @@ class StyleEmbeddingModel:
         A1_S2 = self.similarity(anchor, second)
 
         # Return the prediction
-        return (A1_S1 > A1_S2).int().tolist()
+        return (A1_S1 < A1_S2).int().tolist()
 
     def _predict_STEL(self,
                       dir_path: str):
@@ -310,7 +310,7 @@ class StyleEmbeddingModel:
 
         predicted_cav = self._predict_cav(anchor_cav, first_cav, second_cav)
 
-        actual_cav = [1] * len(anchor_cav)
+        actual_cav = [0] * len(anchor_cav)
         accuracy_cav = accuracy_score(actual_cav, predicted_cav)
 
         print(f"Accuracy on the CAV task: {accuracy_cav}")
