@@ -133,9 +133,11 @@ def preprocess(df: pd.DataFrame,
             (df["text"].str.lower().str.contains(
                 "bot", regex=False, case=False))].index)
 
+    """
     # Remove all utterances from authors that have only one utterance
     df = df.drop(df.groupby("author_id").filter(
         lambda x: x.shape[0] == 1).index)
+    """
 
     # Unescape the HTML entities
     df["text"] = df["text"].apply(html.unescape)

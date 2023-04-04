@@ -166,7 +166,7 @@ def evaluate_mode(model_path, data_path):
     print("Evaluating model...")
     # Load the model
     print("Loading model...")
-    model = StyleEmbeddingModel(model_path=None)
+    model = StyleEmbeddingModel(model_path=model_path)
 
     try:
         threshold = get_threshold(
@@ -204,7 +204,7 @@ def evaluate_mode(model_path, data_path):
         # Get the threshold
         threshold = thresholds[np.argmax(tpr - fpr)]
 
-        print(f"Threshold: {threshold}")
+    print(f"Threshold: {threshold}")
 
     print("Model loaded.")
 

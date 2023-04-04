@@ -104,9 +104,6 @@ def create_pairings(df: pd.DataFrame,
     except FileNotFoundError:
         print("Pairings not found. Calculating...")
 
-    semantic_pairings = []
-    regular_pairings = []
-
     # Reset the index, so that the index is the same as the row number
     df = df.reset_index(drop=True)
 
@@ -141,14 +138,21 @@ def create_pairings(df: pd.DataFrame,
     paraphrases = paraphrases.groupby("idx_1")["idx_2"].apply(list).to_dict()
     paraphrases = defaultdict(list, paraphrases)
 
-    # Convert the df to a dictionary of lists, where the key is the author_id
-    # and the value is a list of the indices of sentences written by that author
+    # Reset the index of the df
     df["index"] = df.index
-    data = df.groupby("author_id")["index"].apply(list).to_dict()
-    data_keys = list(data.keys())
+
+    # Create a dictionary where the key is the index and the value is the conversation_id
+    conversation_lookup = df.set_index("index")["conversation_id"].to_dict()
 
     # Create a lookup table for the indices of the sentences
     lookup = df.set_index("index").to_dict()["text"]
+
+    # Convert the df to a dictionary of lists, where the key is the author_id
+    # and the value is a list of the indices of sentences written by that author
+    # Also filter out authors with less than 2 sentences
+    df = df.groupby("author_id").filter(lambda x: len(x) > 1)
+    data = df.groupby("author_id")["index"].apply(list).to_dict()
+    data_keys = list(data.keys())
 
     print("Time to convert: ", time.time() - start)
 
@@ -182,6 +186,7 @@ def create_pairings(df: pd.DataFrame,
         # Temp list to store the pairings
         temp_pairings = []
         temp_s_pairings = []
+        temp_conversations = set()
 
         # Iterate through each author
         for author_id, sentences in authors:
@@ -189,6 +194,12 @@ def create_pairings(df: pd.DataFrame,
             # Iterate through each sentence
             for i in range(len(sentences)):
                 anchor = lookup[sentences[i]]
+
+                # Add the conversation to the set of conversations
+                # Take the author_id and the sentence to find the
+                # conversation_id in the df
+                temp_conversations.add(
+                    conversation_lookup[sentences[i]])
 
                 # Count the number of paraphrases used for this anchor
                 n_anchor_paraphrases = 0
@@ -233,6 +244,13 @@ def create_pairings(df: pd.DataFrame,
                             all_similar = True
                             break
 
+                        # Add the negative example and the positive example to
+                        # the set of conversations
+                        temp_conversations.add(conversation_lookup[idx_2])
+
+                        temp_conversations.add(
+                            conversation_lookup[sentences[j]])
+
                     # If we do not have enough negative examples, we need to
                     # create some random negative examples
                     while n_neg < max_negative:
@@ -256,16 +274,21 @@ def create_pairings(df: pd.DataFrame,
                     else:
                         temp_pairings.append(example)
 
-        return (temp_pairings, temp_s_pairings)
+        return (temp_pairings, temp_s_pairings, temp_conversations)
 
     # Create a pool of processes
     with Pool(n_cores) as pool:
         results = pool.map(_create_pairings, chunks)
 
+    semantic_pairings = []
+    regular_pairings = []
+    conversations = set()
+
     # Flatten the list of lists and separate the pairings and semantic pairings
     for result in results:
         regular_pairings += result[0]
         semantic_pairings += result[1]
+        conversations = conversations.union(result[2])
 
     # End the timer and print the time it took to create the pairings
     end = time.time()
@@ -277,11 +300,11 @@ def create_pairings(df: pd.DataFrame,
     # Combine the pairings and the semantic pairings such that the semantic
     # pairings are first in the list and the regular pairings are second,
     # following the semantic_proportion constraint
-    n_regular = int(((1 - semantic_proportion) *
-                     len(semantic_pairings)) / semantic_proportion)
+    n_regular = 0  # int(((1 - semantic_proportion) *
+    #      len(semantic_pairings)) / semantic_proportion)
 
     print(
-        f"Using {len(semantic_pairings)} semantic pairings and {min(n_regular,len(regular_pairings))} regular pairings.")
+        f"Using {len(semantic_pairings)} semantic pairings and {min(n_regular,len(regular_pairings))} regular pairings from {len(conversations)} conversations.")
 
     # Combine the pairings and the semantic pairings
     pairings = semantic_pairings + regular_pairings[:n_regular]
