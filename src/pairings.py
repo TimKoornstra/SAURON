@@ -2,6 +2,7 @@
 
 # Standard Library
 from collections import defaultdict
+import gc
 import os
 import pickle
 import random
@@ -9,9 +10,10 @@ import time
 from typing import List, Tuple
 
 # Third Party
-from multiprocess import Pool, cpu_count
+from multiprocessing import Pool, cpu_count
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
+import tqdm
 
 # Local
 from semantics import paraphrase_mining
@@ -61,6 +63,119 @@ def split_data(df: pd.DataFrame,
     val, test = test.iloc[val_idx], test.iloc[test_idx]
 
     return train, val, test
+
+
+def _create_pairings(args):
+    """
+    A helper function to create the pairings for a chunk of the data.
+
+    Parameters
+    ----------
+    authors : List[Tuple[int, List[int]]]
+        The chunk of the data containing the author_id and the indices of
+        the sentences written by that author.
+
+    Returns
+    -------
+    Tuple[List[List[str]], List[Tuple[str, str]]]
+        A tuple containing the list of all pairings and the list of
+        semantic pairings.
+    """
+    # Temp list to store the pairings
+    temp_pairings = []
+    temp_s_pairings = []
+    temp_conversations = set()
+
+    # Unpack the arguments
+    authors, data, lookup, paraphrases, max_negative, data_keys = args
+
+    # Iterate through each author
+    for author_id, sentences in authors:
+
+        # Iterate through each sentence
+        for i in range(len(sentences)):
+            anchor = lookup[sentences[i]]["text"]
+
+            # Add the conversation to the set of conversations
+            # Take the author_id and the sentence to find the
+            # conversation_id in the df
+            temp_conversations.add(
+                lookup[sentences[i]]["conversation_id"])
+
+            # Count the number of paraphrases used for this anchor
+            n_anchor_paraphrases = 0
+
+            # Iterate through the rest of the sentences by the same author.
+            # We include the current sentence, so that the model can learn
+            # that semantically similar is not necessarily a different
+            # author.
+            for j in range(i+1, len(sentences)):
+                # Create a predetermined size list of the examples, so that
+                # it contains the anchor, the positive example, and the
+                # negative examples
+                example = [None] * (max_negative + 2)
+                pos = lookup[sentences[j]]["text"]
+
+                # Add the anchor and the positive example to the example
+                example[0] = anchor
+                example[1] = pos
+
+                # Set the number of negative examples for this positive
+                # example to 0 and a flag to check if all the negative
+                # examples are semantically similar
+                n_neg = 0
+                all_similar = False
+
+                for k in range(n_anchor_paraphrases, len(paraphrases[sentences[i]])):
+                    # Get the index of the paraphrase
+                    idx_2 = paraphrases[sentences[i]][k]
+
+                    # Add the pairing to the list
+                    example[n_neg + 2] = lookup[idx_2]["text"]
+
+                    # Increment the number of negative examples
+                    n_neg += 1
+
+                    # Increment the number of paraphrases used for this
+                    # anchor
+                    n_anchor_paraphrases += 1
+
+                    # Add the negative example and the positive example to
+                    # the set of conversations
+                    temp_conversations.add(lookup[idx_2]["conversation_id"])
+
+                    temp_conversations.add(
+                        lookup[sentences[j]]["conversation_id"])
+
+                    # If we have enough negative examples, break
+                    if n_neg >= max_negative:
+                        all_similar = True
+                        break
+
+                # If we do not have enough negative examples, we need to
+                # create some random negative examples
+                while n_neg < max_negative:
+                    # Get a random sentence from a random author
+                    # Make sure that the random author is not the same as
+                    # current author
+                    while (random_author := random.choice(data_keys)) == author_id:
+                        continue
+
+                    random_sentence = random.choice(data[random_author])
+
+                    # Add the pairing to the list
+                    example[n_neg + 2] = lookup[random_sentence]["text"]
+
+                    # Increment the number of negative examples
+                    n_neg += 1
+
+                # Add the example to the list of examples
+                if all_similar:
+                    temp_s_pairings.append(example)
+                else:
+                    temp_pairings.append(example)
+
+    return (temp_pairings, temp_s_pairings, temp_conversations)
 
 
 def create_pairings(df: pd.DataFrame,
@@ -141,11 +256,8 @@ def create_pairings(df: pd.DataFrame,
     # Reset the index of the df
     df["index"] = df.index
 
-    # Create a dictionary where the key is the index and the value is the conversation_id
-    conversation_lookup = df.set_index("index")["conversation_id"].to_dict()
-
-    # Create a lookup table for the indices of the sentences
-    lookup = df.set_index("index").to_dict()["text"]
+    lookup = df.set_index(
+        "index")[["text", "conversation_id"]].to_dict(orient="index")
 
     # Convert the df to a dictionary of lists, where the key is the author_id
     # and the value is a list of the indices of sentences written by that author
@@ -153,6 +265,10 @@ def create_pairings(df: pd.DataFrame,
     df = df.groupby("author_id").filter(lambda x: len(x) > 1)
     data = df.groupby("author_id")["index"].apply(list).to_dict()
     data_keys = list(data.keys())
+
+    # Delete the df to free up memory
+    del df
+    gc.collect()
 
     print("Time to convert: ", time.time() - start)
 
@@ -165,130 +281,28 @@ def create_pairings(df: pd.DataFrame,
     # We need to make sure that the amount of chunks is exactly n_cores
     # so that we can use all the cores
     data_items = list(data.items())
-    chunks = [data_items[i::n_cores] for i in range(n_cores)]
+    chunks = (data_items[i::n_cores] for i in range(n_cores))
 
-    def _create_pairings(authors):
-        """
-        A helper function to create the pairings for a chunk of the data.
-
-        Parameters
-        ----------
-        authors : List[Tuple[int, List[int]]]
-            The chunk of the data containing the author_id and the indices of
-            the sentences written by that author.
-
-        Returns
-        -------
-        Tuple[List[List[str]], List[Tuple[str, str]]]
-            A tuple containing the list of all pairings and the list of
-            semantic pairings.
-        """
-        # Temp list to store the pairings
-        temp_pairings = []
-        temp_s_pairings = []
-        temp_conversations = set()
-
-        # Iterate through each author
-        for author_id, sentences in authors:
-
-            # Iterate through each sentence
-            for i in range(len(sentences)):
-                anchor = lookup[sentences[i]]
-
-                # Add the conversation to the set of conversations
-                # Take the author_id and the sentence to find the
-                # conversation_id in the df
-                temp_conversations.add(
-                    conversation_lookup[sentences[i]])
-
-                # Count the number of paraphrases used for this anchor
-                n_anchor_paraphrases = 0
-
-                # Iterate through the rest of the sentences by the same author.
-                # We include the current sentence, so that the model can learn
-                # that semantically similar is not necessarily a different
-                # author.
-                for j in range(i+1, len(sentences)):
-                    # Create a predetermined size list of the examples, so that
-                    # it contains the anchor, the positive example, and the
-                    # negative examples
-                    example = [None] * (max_negative + 2)
-                    pos = lookup[sentences[j]]
-
-                    # Add the anchor and the positive example to the example
-                    example[0] = anchor
-                    example[1] = pos
-
-                    # Set the number of negative examples for this positive
-                    # example to 0 and a flag to check if all the negative
-                    # examples are semantically similar
-                    n_neg = 0
-                    all_similar = False
-
-                    for k in range(n_anchor_paraphrases, len(paraphrases[sentences[i]])):
-                        # Get the index of the paraphrase
-                        idx_2 = paraphrases[sentences[i]][k]
-
-                        # Add the pairing to the list
-                        example[n_neg + 2] = lookup[idx_2]
-
-                        # Increment the number of negative examples
-                        n_neg += 1
-
-                        # Increment the number of paraphrases used for this
-                        # anchor
-                        n_anchor_paraphrases += 1
-
-                        # If we have enough negative examples, break
-                        if n_neg >= max_negative:
-                            all_similar = True
-                            break
-
-                        # Add the negative example and the positive example to
-                        # the set of conversations
-                        temp_conversations.add(conversation_lookup[idx_2])
-
-                        temp_conversations.add(
-                            conversation_lookup[sentences[j]])
-
-                    # If we do not have enough negative examples, we need to
-                    # create some random negative examples
-                    while n_neg < max_negative:
-                        # Get a random sentence from a random author
-                        # Make sure that the random author is not the same as
-                        # current author
-                        while (random_author := random.choice(data_keys)) == author_id:
-                            continue
-
-                        random_sentence = random.choice(data[random_author])
-
-                        # Add the pairing to the list
-                        example[n_neg + 2] = lookup[random_sentence]
-
-                        # Increment the number of negative examples
-                        n_neg += 1
-
-                    # Add the example to the list of examples
-                    if all_similar:
-                        temp_s_pairings.append(example)
-                    else:
-                        temp_pairings.append(example)
-
-        return (temp_pairings, temp_s_pairings, temp_conversations)
-
-    # Create a pool of processes
-    with Pool(n_cores) as pool:
-        results = pool.map(_create_pairings, chunks)
+    chunk_args = ((chunk, {k: data[k] for k, _ in chunk}, lookup,
+                   paraphrases, max_negative, data_keys) for chunk in chunks)
 
     semantic_pairings = []
     regular_pairings = []
     conversations = set()
 
-    # Flatten the list of lists and separate the pairings and semantic pairings
-    for result in results:
-        regular_pairings += result[0]
-        semantic_pairings += result[1]
-        conversations = conversations.union(result[2])
+    # Create a pool of processes
+    with Pool(n_cores) as pool:
+        progress_bar = tqdm.tqdm(total=n_cores,
+                                 desc="Processing chunks", unit="chunk")
+
+        # Flatten the list of lists and separate the pairings and semantic pairings
+        for result in pool.imap(_create_pairings, chunk_args):
+            regular_pairings.extend(result[0])
+            semantic_pairings.extend(result[1])
+            conversations = conversations.update(result[2])
+            progress_bar.update(1)
+
+        progress_bar.close()
 
     # End the timer and print the time it took to create the pairings
     end = time.time()

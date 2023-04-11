@@ -91,12 +91,17 @@ def paraphrase_mining(data: pd.DataFrame,
     print("Paraphrases found.")
 
     # Remove paraphrases that are the same sentence or from the same author
+    # Remove paraphrases that are the same sentence or from the same author
     print("Removing duplicates...")
-    paraphrases = [
-        (score, i, j)
-        for score, i, j in paraphrases
-        if data["text"].iloc[i].strip() != data["text"].iloc[j].strip()
-        and data["author_id"].iloc[i] != data["author_id"].iloc[j]]
+    already_seen = set()
+    paraphrases = []
+    for score, i, j in all_paraphrases:
+        if data["text"].iloc[i].strip() != data["text"].iloc[j].strip() and data["author_id"].iloc[i] != data["author_id"].iloc[j]:
+            # Ensure that we only add the same i, paraphrase once to combat
+            # the oversampling
+            if (i, data["text"].iloc[j].strip()) not in already_seen:
+                paraphrases.append((score, i, j))
+                already_seen.add((i, data["text"].iloc[j].strip()))
     print("Duplicates removed.")
 
     # Convert the paraphrases to a DataFrame
@@ -106,6 +111,7 @@ def paraphrase_mining(data: pd.DataFrame,
     )
 
     print(f"Average similarity: {paraphrases['similarity'].mean():.2f}")
+    print(paraphrases.iloc[0])
 
     # Save the DataFrame to a pickle file
     if output_path:

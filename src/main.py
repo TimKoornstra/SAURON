@@ -184,7 +184,7 @@ def evaluate_mode(model_path, data_path):
         from utils import contrastive_to_binary
         from sentence_transformers import InputExample
         val_examples = [InputExample(texts=texts, label=1)
-                        for texts in val_data[:50000]]
+                        for texts in val_data[:10000]]
         val_data = contrastive_to_binary(val_examples)
 
         # Get the true labels
