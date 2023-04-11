@@ -87,7 +87,9 @@ def _create_pairings(args):
     temp_conversations = set()
 
     # Unpack the arguments
-    authors, data, lookup, paraphrases, max_negative, data_keys = args
+    authors, data, lookup, paraphrases, max_negative = args
+
+    data_keys = list(data.keys())
 
     # Iterate through each author
     for author_id, sentences in authors:
@@ -264,7 +266,6 @@ def create_pairings(df: pd.DataFrame,
     # Also filter out authors with less than 2 sentences
     df = df.groupby("author_id").filter(lambda x: len(x) > 1)
     data = df.groupby("author_id")["index"].apply(list).to_dict()
-    data_keys = list(data.keys())
 
     # Delete the df to free up memory
     del df
@@ -284,7 +285,7 @@ def create_pairings(df: pd.DataFrame,
     chunks = (data_items[i::n_cores] for i in range(n_cores))
 
     chunk_args = ((chunk, {k: data[k] for k, _ in chunk}, lookup,
-                   paraphrases, max_negative, data_keys) for chunk in chunks)
+                   paraphrases, max_negative) for chunk in chunks)
 
     semantic_pairings = []
     regular_pairings = []
@@ -299,7 +300,7 @@ def create_pairings(df: pd.DataFrame,
         for result in pool.imap(_create_pairings, chunk_args):
             regular_pairings.extend(result[0])
             semantic_pairings.extend(result[1])
-            conversations = conversations.update(result[2])
+            conversations.update(result[2])
             progress_bar.update(1)
 
         progress_bar.close()
