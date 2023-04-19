@@ -81,10 +81,13 @@ def _create_pairings(args):
         A tuple containing the list of all pairings and the list of
         semantic pairings.
     """
-    # Temp list to store the pairings
-    temp_pairings = []
-    temp_s_pairings = []
-    temp_conversations = set()
+    # Create the temporary variables
+    temp_pairings = []  # List of all non-semantic pairings
+    temp_s_pairings = []  # List of semantic pairings
+    temp_conversations = set()  # Set of conversations
+    # Number of utterances per author in the data
+    temp_authors = defaultdict(int)
+    temp_count_anchor = defaultdict(int)  # Number of times an anchor is used
 
     # Unpack the arguments
     authors, data, lookup, paraphrases, max_negative = args
@@ -149,6 +152,8 @@ def _create_pairings(args):
                     temp_conversations.add(
                         lookup[sentences[j]]["conversation_id"])
 
+                    temp_authors[lookup[idx_2]["author_id"]] += 1
+
                     # If we have enough negative examples, break
                     if n_neg >= max_negative:
                         all_similar = True
@@ -171,13 +176,20 @@ def _create_pairings(args):
                     # Increment the number of negative examples
                     n_neg += 1
 
+                    # Increment the number of examples for the random
+                    temp_authors[random_author] += 1
+
                 # Add the example to the list of examples
                 if all_similar:
                     temp_s_pairings.append(example)
+                    temp_authors[author_id] += 2
+                    temp_count_anchor[anchor] += 1
                 else:
                     temp_pairings.append(example)
+                    temp_authors[author_id] += 2
+                    temp_count_anchor[anchor] += 1
 
-    return (temp_pairings, temp_s_pairings, temp_conversations)
+    return (temp_pairings, temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor)
 
 
 def create_pairings(df: pd.DataFrame,
@@ -259,7 +271,7 @@ def create_pairings(df: pd.DataFrame,
     df["index"] = df.index
 
     lookup = df.set_index(
-        "index")[["text", "conversation_id"]].to_dict(orient="index")
+        "index")[["text", "conversation_id", "author_id"]].to_dict(orient="index")
 
     # Convert the df to a dictionary of lists, where the key is the author_id
     # and the value is a list of the indices of sentences written by that author
@@ -290,6 +302,8 @@ def create_pairings(df: pd.DataFrame,
     semantic_pairings = []
     regular_pairings = []
     conversations = set()
+    authors = defaultdict(int)
+    count_anchor = defaultdict(int)
 
     # Create a pool of processes
     with Pool(n_cores) as pool:
@@ -301,6 +315,13 @@ def create_pairings(df: pd.DataFrame,
             regular_pairings.extend(result[0])
             semantic_pairings.extend(result[1])
             conversations.update(result[2])
+
+            for key, value in result[3].items():
+                authors[key] += value
+
+            for key, value in result[4].items():
+                count_anchor[key] += value
+
             progress_bar.update(1)
 
         progress_bar.close()
@@ -323,6 +344,26 @@ def create_pairings(df: pd.DataFrame,
 
     # Combine the pairings and the semantic pairings
     pairings = semantic_pairings + regular_pairings[:n_regular]
+
+    # Temp variables for statistics
+    author_values = authors.values()
+    count_anchor_values = count_anchor.values()
+
+    print("==============================")
+    print("       Statistics")
+    print("==============================")
+    print(f"Number of pairings:          {len(pairings):>5}")
+    print(f"Number of authors:           {len(authors):>5}")
+    print(f"Number of conversations:     {len(conversations):>5}")
+    print(f"Maximum utterances per author: {max(author_values):>5}")
+    print(f"Minimum utterances per author: {min(author_values):>5}")
+    print(
+        f"Average utterances per author: {sum(author_values) / len(authors):>5.2f}")
+    print(f"Maximum an anchor occurs:    {max(count_anchor_values):>5}")
+    print(f"Minimum an anchor occurs:    {min(count_anchor_values):>5}")
+    print(
+        f"Average an anchor occurs:    {sum(count_anchor_values) / len(count_anchor):>5.2f}")
+    print("==============================")
 
     # Shuffle the pairings
     random.seed(42)

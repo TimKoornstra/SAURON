@@ -100,15 +100,30 @@ def preprocess(df: pd.DataFrame,
             "[URL]", regex=True, case=False
         )
 
+        df_size = len(df)
+        total_authors = df["author_id"].nunique()
+
         # Remove all RemindMe! comments
         df = df.drop(df[df["text"].str.lower().str.contains(
             r"!?remindme!?", regex=True, case=False)].index)
+
+        print("Removed RemindMe! comments")
+        print(
+            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+        df_size = len(df)
+        total_authors = df["author_id"].nunique()
 
         # Remove all invalid utterances
         df = df.drop(df[df["text"].str.strip().str.lower().isin(
             ["[ deleted ]", "[deleted]", "[ removed ]", "[removed]", ""])]
             .index
         )
+
+        print("Removed invalid utterances")
+        print(
+            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+        df_size = len(df)
+        total_authors = df["author_id"].nunique()
 
         # (i.e., utterances that are only mentions, URLs or a combination of
         # mentions and URLs)
@@ -118,11 +133,24 @@ def preprocess(df: pd.DataFrame,
             )
         )].index)
 
+        print("Removed utterances that are only mentions and/or URLs")
+        print(
+            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+        df_size = len(df)
+        total_authors = df["author_id"].nunique()
+
         # Remove all utterances from users named "[deleted]", "MTGCardFetcher"
         # or "AutoModerator"
         df = df.drop(
             df[df["author_id"].str.strip().str.lower()
                .isin(["[deleted]", "mtgcardfetcher", "automoderator"])].index)
+
+        print(
+            "Removed utterances from users named [deleted], MTGCardFetcher and AutoModerator")
+        print(
+            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+        df_size = len(df)
+        total_authors = df["author_id"].nunique()
 
         # Remove all utterances from users that are likely bots
         # (i.e. users that have a username that contains "bot" or all of their
@@ -133,6 +161,10 @@ def preprocess(df: pd.DataFrame,
             (df["text"].str.lower().str.contains(
                 "bot", regex=False, case=False))].index)
 
+        print("Removed utterances from users that are likely bots")
+        print(
+            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+
     """
     # Remove all utterances from authors that have only one utterance
     df = df.drop(df.groupby("author_id").filter(
@@ -142,11 +174,18 @@ def preprocess(df: pd.DataFrame,
     # Unescape the HTML entities
     df["text"] = df["text"].apply(html.unescape)
 
+    df_size = len(df)
+    total_authors = df["author_id"].nunique()
+
     # Ensure that the texts fit in the maximum length of the RoBERTa model
     tokenizer = RobertaTokenizer.from_pretrained(
         "roberta-base")
     df = df.drop(df[df["text"].progress_apply(
         lambda x: len(tokenizer.encode(x)) > 512)].index)
+
+    print("Removed utterances that are too long")
+    print(
+        f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
 
     print(f"Number of utterances: {df.shape[0]}")
     print(f"Number of authors: {df['author_id'].nunique()}")
