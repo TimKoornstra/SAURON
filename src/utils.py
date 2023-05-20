@@ -1,10 +1,13 @@
 # > Imports
 # Standard Library
-import csv
+import pickle
 from typing import List, Tuple
 
 # Third Party
 from sentence_transformers import InputExample
+
+import numpy as np
+from sklearn.metrics import roc_curve
 
 
 def contrastive_to_binary(examples: List[InputExample])\
@@ -41,7 +44,9 @@ def contrastive_to_binary(examples: List[InputExample])\
     return binary_pairings
 
 
-def get_threshold(results_path: str) -> float:
+def get_threshold(data_path: str,
+                  model: object,
+                  ) -> float:
     """
     Get the thresholds from the results file.
 
@@ -56,14 +61,32 @@ def get_threshold(results_path: str) -> float:
         The threshold.
     """
 
-    with open(results_path, newline="") as f:
-        reader = list(csv.DictReader(f))
+    # Determine the threshold using the validation set and AUC
+    # Load the validation data
+    with open(f"{data_path}/paired/val-pairings.pkl", "rb") as f:
+        val_data = pickle.load(f)
 
-    highest_accuracy = 0
-    index = 0
-    for i, row in enumerate(reader):
-        if float(row["cossim_accuracy"]) > highest_accuracy:
-            highest_accuracy = float(row["cossim_accuracy"])
-            index = i
+    print("Calculating threshold manually...")
 
-    return float(reader[index]["cossim_accuracy_threshold"])
+    # Get the true labels
+    # Convert to Binary Task
+    val_examples = [InputExample(texts=texts, label=1)
+                    for texts in val_data[:10000]]
+    val_data = contrastive_to_binary(val_examples)
+
+    # Get the true labels
+    true_labels = [x[2] for x in val_data]
+
+    first = [x[0] for x in val_data]
+    second = [x[1] for x in val_data]
+
+    # Get the predictions
+    sims = model.similarity(first, second)
+
+    # Get the threshold
+    fpr, tpr, thresholds = roc_curve(true_labels, sims)
+
+    # Get the threshold
+    threshold = thresholds[np.argmax(tpr - fpr)]
+
+    return threshold

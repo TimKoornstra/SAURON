@@ -1,5 +1,6 @@
 # > Imports
 # Standard Library
+import csv
 import os
 import random
 
@@ -80,7 +81,8 @@ class StyleEmbeddingModel:
         epochs : int
             The number of epochs to train the model for.
         """
-        print(f"Training on {len(train_data)} examples for {epochs} epochs, using a batch size of {batch_size}")
+        print(
+            f"Training on {len(train_data)} examples for {epochs} epochs, using a batch size of {batch_size}")
 
         # Load the train dataset
         train_examples = [InputExample(texts=texts, label=1)
@@ -245,6 +247,11 @@ class StyleEmbeddingModel:
     def _predict_STEL_oc(self,
                          dir_path: str):
 
+        # Create a dataframe for incorrect predictions
+        incorrect = pd.DataFrame(columns=["Anchor 1", "Anchor 2",
+                                          "Same Style", "A1-Same Style",
+                                          "A1-A2", "Task"])
+
         # Load the task instances
         for file in os.listdir(dir_path):
             if file.endswith(".tsv"):
@@ -267,11 +274,25 @@ class StyleEmbeddingModel:
                     predictions.append(self._predict_cav(
                         [row["Anchor 1"]], [same_style], [row["Anchor 2"]])[0])
 
+                    if predictions[-1] == 1:
+                        # Add the incorrect prediction to the dataframe
+                        incorrect.loc[len(incorrect)] = {
+                            "Anchor 1": row["Anchor 1"],
+                            "Anchor 2": row["Anchor 2"],
+                            "Same Style": same_style,
+                            "A1-Same Style": self.similarity(row["Anchor 1"], same_style).item(),
+                            "A1-A2": self.similarity(row["Anchor 1"], row["Anchor 2"]).item(),
+                            "Task": task_name
+                        }
+
                 # Calculate the accuracy of the model on this task
                 accuracy = accuracy_score(
                     [0]*len(task), predictions)
 
                 print(f"Accuracy on {task_name}: {accuracy}")
+
+        # Save the incorrect predictions to a file
+        incorrect.to_csv(f"incorrect-{self.name}.csv", index=False)
 
     def evaluate(self,
                  test_data: List[List[str]],
@@ -287,6 +308,7 @@ class StyleEmbeddingModel:
         threshold : int
             The cosine similarity threshold to use for the prediction.
         """
+
         # Load the test dataset
         anchor_cav, first_cav, second_cav = zip(*test_data)
 
@@ -300,6 +322,14 @@ class StyleEmbeddingModel:
 
         # Get the predictions
         predicted_av = self._predict_cos(first_av, second_av, threshold)
+
+        # Save the predictions to a csv file
+        with open(f"predictions-{self.name}.csv", "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["First", "Second", "Actual", "Predicted"])
+
+            for first, second, actual, predicted in zip(first_av, second_av, actual_av, predicted_av):
+                writer.writerow([first, second, actual, predicted])
 
         # Get the accuracy of the model
         accuracy_av = accuracy_score(actual_av, predicted_av)

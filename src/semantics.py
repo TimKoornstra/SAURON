@@ -81,16 +81,15 @@ def paraphrase_mining(data: pd.DataFrame,
 
     # Find paraphrases
     print("Finding paraphrases...")
-    paraphrases = util.paraphrase_mining(
+    all_paraphrases = util.paraphrase_mining(
         model,
         data["text"].tolist(),
         show_progress_bar=True,
-        max_pairs=10000000,
+        max_pairs=100000000,
         top_k=100,
     )
     print("Paraphrases found.")
 
-    # Remove paraphrases that are the same sentence or from the same author
     # Remove paraphrases that are the same sentence or from the same author
     print("Removing duplicates...")
     already_seen = set()

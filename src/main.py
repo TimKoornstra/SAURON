@@ -86,7 +86,7 @@ def training_mode(args):
     print("Train set:")
     train_pairings = create_pairings(train,
                                      semantic_range=(0.0, 1.0),
-                                     semantic_proportion=0.0000000001,
+                                     semantic_proportion=1.0,
                                      max_negative=1,
                                      output_path=args.path,
                                      output_name="train")
@@ -115,19 +115,18 @@ def training_mode(args):
     model = StyleEmbeddingModel(base_model="roberta-base",
                                 cache_path=args.cache_path,
                                 output_path=args.output_path,
-                                name=f"style-nosem-{args.epochs}-{args.batch_size}")
+                                name=f"style-allsemv7-{args.epochs}-{args.batch_size}")
 
     # Train the model
     print("Training model...")
-    model.train(train_data=train_pairings[:724243],
+    model.train(train_data=train_pairings,
                 val_data=val_pairings[:100000],
                 batch_size=args.batch_size,
                 epochs=args.epochs)
     print("Model trained.")
 
     # Retrieve the optimal cosine threshold for the validation set
-    threshold = get_threshold(
-        f"{args.output_path}/{model.name}/eval/binary_classification_evaluation_val_loss_results.csv")
+    threshold = get_threshold(f"{args.path}/paired-val-pairings.pkl", model)
 
     # Evaluate the model
     print("Evaluating model...")
@@ -137,12 +136,11 @@ def training_mode(args):
     print("Model evaluated.")
 
 
-def interactive_mode(model_path):
+def interactive_mode(model_path, data_path):
     # Load the model
     model = StyleEmbeddingModel(model_path=model_path)
 
-    threshold = get_threshold(
-        f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv")
+    threshold = get_threshold(f"{data_path}/paired-val-pairings.pkl", model)
 
     while True:
         # Get the input
@@ -168,42 +166,7 @@ def evaluate_mode(model_path, data_path):
     print("Loading model...")
     model = StyleEmbeddingModel(model_path=model_path)
 
-    try:
-        threshold = get_threshold(
-            f"{model_path}/eval/binary_classification_evaluation_val_loss_results.csv")
-    except FileNotFoundError:
-        # Determine the threshold using the validation set and AUC
-        # Load the validation data
-        with open(f"{data_path}/paired/val-pairings.pkl", "rb") as f:
-            val_data = pickle.load(f)
-
-        print("Calculating threshold manually...")
-
-        # Get the true labels
-        # Convert to Binary Task
-        from utils import contrastive_to_binary
-        from sentence_transformers import InputExample
-        val_examples = [InputExample(texts=texts, label=1)
-                        for texts in val_data[:10000]]
-        val_data = contrastive_to_binary(val_examples)
-
-        # Get the true labels
-        true_labels = [x[2] for x in val_data]
-
-        first = [x[0] for x in val_data]
-        second = [x[1] for x in val_data]
-
-        # Get the predictions
-        sims = model.similarity(first, second)
-
-        # Get the threshold
-        import numpy as np
-        from sklearn.metrics import roc_curve
-        fpr, tpr, thresholds = roc_curve(true_labels, sims)
-
-        # Get the threshold
-        threshold = thresholds[np.argmax(tpr - fpr)]
-
+    threshold = get_threshold(f"{data_path}/paired-val-pairings.pkl", model)
     print(f"Threshold: {threshold}")
 
     print("Model loaded.")
@@ -216,7 +179,7 @@ def evaluate_mode(model_path, data_path):
 
     # Evaluate the model
     print("Evaluating model...")
-    model.evaluate(data[:100000],
+    model.evaluate(data[:1000],
                    stel_dir=f"{data_path}/STEL/",
                    threshold=threshold)
     print("Model evaluated.")
@@ -237,7 +200,7 @@ if __name__ == '__main__':
     elif args.mode == "interactive":
         assert args.model_path is not None, "No model path given."
 
-        interactive_mode(args.model_path)
+        interactive_mode(args.model_path, args.path)
 
     elif args.mode == "evaluate":
         assert args.model_path is not None, "No model path given."

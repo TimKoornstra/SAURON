@@ -89,9 +89,19 @@ def _create_pairings(args):
     temp_authors = defaultdict(int)
     temp_count_anchor = defaultdict(int)  # Number of times an anchor is used
 
+    temp_same_conv = 0
+    temp_anchorpos_conv = 0
+    temp_anchorneg_conv = 0
+    temp_posneg_conv = 0
+    temp_none_conv = 0
+
+    temp_paraphrase_len = 0
+    temp_paraphrase_occ = defaultdict(int)
+
     # Unpack the arguments
     authors, data, lookup, paraphrases, max_negative = args
 
+    # Save the keys of the data for random sampling
     data_keys = list(data.keys())
 
     # Iterate through each author
@@ -100,6 +110,7 @@ def _create_pairings(args):
         # Iterate through each sentence
         for i in range(len(sentences)):
             anchor = lookup[sentences[i]]["text"]
+            anchor_conv = lookup[sentences[i]]["conversation_id"]
 
             # Add the conversation to the set of conversations
             # Take the author_id and the sentence to find the
@@ -120,6 +131,7 @@ def _create_pairings(args):
                 # negative examples
                 example = [None] * (max_negative + 2)
                 pos = lookup[sentences[j]]["text"]
+                pos_conv = lookup[sentences[j]]["conversation_id"]
 
                 # Add the anchor and the positive example to the example
                 example[0] = anchor
@@ -131,12 +143,15 @@ def _create_pairings(args):
                 n_neg = 0
                 all_similar = False
 
-                for k in range(n_anchor_paraphrases, len(paraphrases[sentences[i]])):
+                for k in range(n_anchor_paraphrases, len(paraphrases[sentences[j]])):
                     # Get the index of the paraphrase
-                    idx_2 = paraphrases[sentences[i]][k]
+                    idx_2 = paraphrases[sentences[j]][k]
 
                     # Add the pairing to the list
                     example[n_neg + 2] = lookup[idx_2]["text"]
+
+                    temp_paraphrase_len += len(lookup[idx_2]["text"].split())
+                    temp_paraphrase_occ[lookup[idx_2]["text"]] += 1
 
                     # Increment the number of negative examples
                     n_neg += 1
@@ -154,11 +169,27 @@ def _create_pairings(args):
 
                     temp_authors[lookup[idx_2]["author_id"]] += 1
 
+                    # Collect conversation info
+                    neg_conv = lookup[idx_2]["conversation_id"]
+
+                    if anchor_conv == pos_conv:
+                        if anchor_conv == neg_conv:
+                            temp_same_conv += 1
+                        else:
+                            temp_anchorpos_conv += 1
+                    elif anchor_conv == neg_conv:
+                        temp_anchorneg_conv += 1
+                    elif pos_conv == neg_conv:
+                        temp_posneg_conv += 1
+                    else:
+                        temp_none_conv += 1
+
                     # If we have enough negative examples, break
                     if n_neg >= max_negative:
                         all_similar = True
                         break
 
+                """
                 # If we do not have enough negative examples, we need to
                 # create some random negative examples
                 while n_neg < max_negative:
@@ -178,18 +209,22 @@ def _create_pairings(args):
 
                     # Increment the number of examples for the random
                     temp_authors[random_author] += 1
+                """
 
                 # Add the example to the list of examples
                 if all_similar:
                     temp_s_pairings.append(example)
                     temp_authors[author_id] += 2
-                    temp_count_anchor[anchor] += 1
+                    temp_count_anchor[sentences[i]] += 1
+                    break
+                """
                 else:
                     temp_pairings.append(example)
                     temp_authors[author_id] += 2
-                    temp_count_anchor[anchor] += 1
+                    temp_count_anchor[sentences[i]] += 1
+                """
 
-    return (temp_pairings, temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor)
+    return (temp_pairings, temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_same_conv, temp_anchorpos_conv, temp_anchorneg_conv, temp_posneg_conv, temp_none_conv, temp_paraphrase_len, temp_paraphrase_occ)
 
 
 def create_pairings(df: pd.DataFrame,
@@ -305,6 +340,15 @@ def create_pairings(df: pd.DataFrame,
     authors = defaultdict(int)
     count_anchor = defaultdict(int)
 
+    same_conv = 0
+    anchorpos_conv = 0
+    anchorneg_conv = 0
+    posneg_conv = 0
+    none_conv = 0
+
+    paraphrase_len = 0
+    paraphrase_occ = defaultdict(int)
+
     # Create a pool of processes
     with Pool(n_cores) as pool:
         progress_bar = tqdm.tqdm(total=n_cores,
@@ -322,7 +366,20 @@ def create_pairings(df: pd.DataFrame,
             for key, value in result[4].items():
                 count_anchor[key] += value
 
+            same_conv += result[5]
+            anchorpos_conv += result[6]
+            anchorneg_conv += result[7]
+            posneg_conv += result[8]
+            none_conv += result[9]
+
+            paraphrase_len += result[10]
+
+            for key, value in result[11].items():
+                paraphrase_occ[key] += value
+
             progress_bar.update(1)
+
+        paraphrase_len = paraphrase_len / len(semantic_pairings)
 
         progress_bar.close()
 
@@ -349,6 +406,9 @@ def create_pairings(df: pd.DataFrame,
     author_values = authors.values()
     count_anchor_values = count_anchor.values()
 
+    sorted_paraphrases = dict(
+        sorted(paraphrase_occ.items(), key=lambda item: item[1], reverse=True))
+
     print("==============================")
     print("       Statistics")
     print("==============================")
@@ -363,6 +423,19 @@ def create_pairings(df: pd.DataFrame,
     print(f"Minimum an anchor occurs:    {min(count_anchor_values):>5}")
     print(
         f"Average an anchor occurs:    {sum(count_anchor_values) / len(count_anchor):>5.2f}")
+    print("-----------------------------")
+    print("Conversations is the same for")
+    print(f"All:        {same_conv:>5}")
+    print(f"Anchor-pos: {anchorpos_conv:>5}")
+    print(f"Anchor-neg: {anchorneg_conv:>5}")
+    print(f"Pos-neg:    {posneg_conv:>5}")
+    print(f"None:       {none_conv:>5}")
+    print("-----------------------------")
+    print("Paraphrase statistics")
+    print(f"Average paraphrase length: {paraphrase_len:.2f}")
+    print("Top 50 most common paraphrases:")
+    for key, value in list(sorted_paraphrases.items())[:50]:
+        print(f"{key}\n{value} occurances")
     print("==============================")
 
     # Shuffle the pairings

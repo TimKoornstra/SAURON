@@ -165,12 +165,6 @@ def preprocess(df: pd.DataFrame,
         print(
             f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
 
-    """
-    # Remove all utterances from authors that have only one utterance
-    df = df.drop(df.groupby("author_id").filter(
-        lambda x: x.shape[0] == 1).index)
-    """
-
     # Unescape the HTML entities
     df["text"] = df["text"].apply(html.unescape)
 
@@ -184,6 +178,17 @@ def preprocess(df: pd.DataFrame,
         lambda x: len(tokenizer.encode(x)) > 512)].index)
 
     print("Removed utterances that are too long")
+    print(
+        f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+
+    # Take a sample of 10 utterances per author
+    df_size = len(df)
+    total_authors = df["author_id"].nunique()
+
+    df = df.groupby("author_id").apply(lambda x: x.sample(
+        min(len(x), 10), random_state=42)).reset_index(drop=True)
+
+    print("Limited utterances to 10 per author")
     print(
         f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
 
