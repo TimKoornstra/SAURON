@@ -126,7 +126,7 @@ def training_mode(args):
     print("Model trained.")
 
     # Retrieve the optimal cosine threshold for the validation set
-    threshold = get_threshold(f"{args.path}/paired-val-pairings.pkl", model)
+    threshold = get_threshold(args.path, model)
 
     # Evaluate the model
     print("Evaluating model...")
@@ -139,13 +139,11 @@ def training_mode(args):
 def interactive_mode(model_path, data_path):
     # Load the model
     model = StyleEmbeddingModel(model_path=model_path)
-
-    threshold = get_threshold(f"{data_path}/paired-val-pairings.pkl", model)
+    threshold = get_threshold(data_path, model)
 
     while True:
         # Get the input
         text = input("Enter a sentence: ")
-
         text2 = input("Enter another sentence: ")
 
         # Get the similarity
@@ -166,7 +164,7 @@ def evaluate_mode(model_path, data_path):
     print("Loading model...")
     model = StyleEmbeddingModel(model_path=model_path)
 
-    threshold = get_threshold(f"{data_path}/paired-val-pairings.pkl", model)
+    threshold = get_threshold(data_path, model)
     print(f"Threshold: {threshold}")
 
     print("Model loaded.")

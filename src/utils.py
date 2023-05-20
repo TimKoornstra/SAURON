@@ -52,8 +52,10 @@ def get_threshold(data_path: str,
 
     Parameters
     ----------
-    results_path : str
-        The path to the results file.
+    data_path : str
+        The path to the data directory.
+    model : object
+        The model to use.
 
     Returns
     -------
