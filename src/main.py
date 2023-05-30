@@ -177,7 +177,7 @@ def evaluate_mode(model_path, data_path):
 
     # Evaluate the model
     print("Evaluating model...")
-    model.evaluate(data[:1000],
+    model.evaluate(data,
                    stel_dir=f"{data_path}/STEL/",
                    threshold=threshold)
     print("Model evaluated.")

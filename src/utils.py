@@ -73,7 +73,7 @@ def get_threshold(data_path: str,
     # Get the true labels
     # Convert to Binary Task
     val_examples = [InputExample(texts=texts, label=1)
-                    for texts in val_data[:10000]]
+                    for texts in val_data[:2000]]
     val_data = contrastive_to_binary(val_examples)
 
     # Get the true labels

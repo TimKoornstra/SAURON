@@ -95,11 +95,10 @@ def _create_pairings(args):
     temp_posneg_conv = 0
     temp_none_conv = 0
 
-    temp_paraphrase_len = 0
-    temp_paraphrase_occ = defaultdict(int)
+    temp_paraphrase_info = []  # List of info (anchor, paraphrase, score)
 
     # Unpack the arguments
-    authors, data, lookup, paraphrases, max_negative = args
+    authors, data, lookup, paraphrases, max_negative, paraphrase_scores = args
 
     # Save the keys of the data for random sampling
     data_keys = list(data.keys())
@@ -143,15 +142,15 @@ def _create_pairings(args):
                 n_neg = 0
                 all_similar = False
 
-                for k in range(n_anchor_paraphrases, len(paraphrases[sentences[j]])):
+                for k in range(n_anchor_paraphrases, len(paraphrases[sentences[i]])):
                     # Get the index of the paraphrase
-                    idx_2 = paraphrases[sentences[j]][k]
+                    idx_2 = paraphrases[sentences[i]][k]
 
                     # Add the pairing to the list
                     example[n_neg + 2] = lookup[idx_2]["text"]
 
-                    temp_paraphrase_len += len(lookup[idx_2]["text"].split())
-                    temp_paraphrase_occ[lookup[idx_2]["text"]] += 1
+                    temp_paraphrase_info.append((anchor, example[n_neg + 2],
+                                                 paraphrase_scores[sentences[i]][k]))
 
                     # Increment the number of negative examples
                     n_neg += 1
@@ -224,7 +223,7 @@ def _create_pairings(args):
                     temp_count_anchor[sentences[i]] += 1
                 """
 
-    return (temp_pairings, temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_same_conv, temp_anchorpos_conv, temp_anchorneg_conv, temp_posneg_conv, temp_none_conv, temp_paraphrase_len, temp_paraphrase_occ)
+    return (temp_pairings, temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_same_conv, temp_anchorpos_conv, temp_anchorneg_conv, temp_posneg_conv, temp_none_conv, temp_paraphrase_info)
 
 
 def create_pairings(df: pd.DataFrame,
@@ -299,6 +298,11 @@ def create_pairings(df: pd.DataFrame,
     # Convert all paraphrases to a defaultdict of lists, where the key is the idx_1
     # and the value is a list of idx_2, sorted by similarity
     paraphrases = paraphrases.sort_values("similarity", ascending=False)
+    # paraphrase_scores should be a dictionary of lists,  where the key is (idx_1, idx_2)
+    # and the value is the similarity score
+    paraphrase_scores = paraphrases.set_index(
+        ["idx_1", "idx_2"])["similarity"].to_dict()
+
     paraphrases = paraphrases.groupby("idx_1")["idx_2"].apply(list).to_dict()
     paraphrases = defaultdict(list, paraphrases)
 
@@ -332,7 +336,7 @@ def create_pairings(df: pd.DataFrame,
     chunks = (data_items[i::n_cores] for i in range(n_cores))
 
     chunk_args = ((chunk, {k: data[k] for k, _ in chunk}, lookup,
-                   paraphrases, max_negative) for chunk in chunks)
+                   paraphrases, max_negative, paraphrase_scores) for chunk in chunks)
 
     semantic_pairings = []
     regular_pairings = []
@@ -346,8 +350,7 @@ def create_pairings(df: pd.DataFrame,
     posneg_conv = 0
     none_conv = 0
 
-    paraphrase_len = 0
-    paraphrase_occ = defaultdict(int)
+    paraphrase_info = []
 
     # Create a pool of processes
     with Pool(n_cores) as pool:
@@ -372,14 +375,9 @@ def create_pairings(df: pd.DataFrame,
             posneg_conv += result[8]
             none_conv += result[9]
 
-            paraphrase_len += result[10]
-
-            for key, value in result[11].items():
-                paraphrase_occ[key] += value
+            paraphrase_info += result[10]
 
             progress_bar.update(1)
-
-        paraphrase_len = paraphrase_len / len(semantic_pairings)
 
         progress_bar.close()
 
@@ -406,9 +404,6 @@ def create_pairings(df: pd.DataFrame,
     author_values = authors.values()
     count_anchor_values = count_anchor.values()
 
-    sorted_paraphrases = dict(
-        sorted(paraphrase_occ.items(), key=lambda item: item[1], reverse=True))
-
     print("==============================")
     print("       Statistics")
     print("==============================")
@@ -431,16 +426,23 @@ def create_pairings(df: pd.DataFrame,
     print(f"Pos-neg:    {posneg_conv:>5}")
     print(f"None:       {none_conv:>5}")
     print("-----------------------------")
-    print("Paraphrase statistics")
-    print(f"Average paraphrase length: {paraphrase_len:.2f}")
-    print("Top 50 most common paraphrases:")
-    for key, value in list(sorted_paraphrases.items())[:50]:
-        print(f"{key}\n{value} occurances")
     print("==============================")
 
     # Shuffle the pairings
     random.seed(42)
     random.shuffle(pairings)
+
+    # Create a new dataframe for all the used paraphrases
+    paraphrase_df = pd.DataFrame(paraphrase_info, columns=[
+                                 "Anchor", "Paraphrase", "Score"])
+
+    # Count the number of times each anchor-paraphrase pair occurs
+    paraphrase_df = paraphrase_df.groupby(
+        ["Anchor", "Paraphrase"]).count().reset_index()
+
+    # Save the paraphrase_df
+    paraphrase_df.to_pickle(
+        f"{output_path}/paired/{output_name}-paraphrases.pkl")
 
     # Save the pairings
     with open(f"{output_path}/paired/{output_name}-pairings.pkl", "wb") as f:

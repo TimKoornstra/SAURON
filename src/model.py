@@ -345,6 +345,7 @@ class StyleEmbeddingModel:
 
         print(f"Accuracy on the CAV task: {accuracy_cav}")
 
+        """
         # Get the predictions for the STEL tasks
         if stel_dir is not None:
             print("Evaluating on the STEL tasks...")
@@ -352,3 +353,5 @@ class StyleEmbeddingModel:
 
             print("Evaluating on the STEL OC tasks...")
             self._predict_STEL_oc(stel_dir)
+            
+       """
