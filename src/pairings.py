@@ -150,7 +150,7 @@ def _create_pairings(args):
                     example[n_neg + 2] = lookup[idx_2]["text"]
 
                     temp_paraphrase_info.append((anchor, example[n_neg + 2],
-                                                 paraphrase_scores[sentences[i]][k]))
+                                                 paraphrase_scores[(sentences[i], idx_2)]))
 
                     # Increment the number of negative examples
                     n_neg += 1
@@ -434,7 +434,7 @@ def create_pairings(df: pd.DataFrame,
 
     # Create a new dataframe for all the used paraphrases
     paraphrase_df = pd.DataFrame(paraphrase_info, columns=[
-                                 "Anchor", "Paraphrase", "Score"])
+        "Anchor", "Paraphrase", "Score"])
 
     # Count the number of times each anchor-paraphrase pair occurs
     paraphrase_df = paraphrase_df.groupby(
