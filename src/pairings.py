@@ -435,15 +435,16 @@ def create_pairings(df: pd.DataFrame,
     random.seed(42)
     random.shuffle(pairings)
 
-    # Create a new dataframe for all the used paraphrases
-    # With the columns: anchor, paraphrase, score, occurrences
-    paraphrase_df = pd.DataFrame(
-        columns=["anchor", "paraphrase", "score", "occurrences"])
+    # Create a list for all the used paraphrases
+    paraphrase_list = []
 
-    # Add the paraphrases to the dataframe
+    # Add the paraphrases to the list
     for key, value in paraphrase_info.items():
-        paraphrase_df = paraphrase_df.append(
-            {"anchor": key[0], "paraphrase": key[1], "score": key[2], "occurrences": value}, ignore_index=True)
+        paraphrase_list.append(
+            {"anchor": key[0], "paraphrase": key[1], "score": key[2], "occurrences": value})
+
+    # Convert the list into a DataFrame
+    paraphrase_df = pd.DataFrame(paraphrase_list)
 
     # Save the paraphrase_df
     paraphrase_df.to_pickle(
