@@ -95,7 +95,7 @@ def _create_pairings(args):
     temp_posneg_conv = 0
     temp_none_conv = 0
 
-    temp_paraphrase_info = []  # List of info (anchor, paraphrase, score)
+    temp_paraphrase_info = defaultdict(int)
 
     # Unpack the arguments
     authors, data, lookup, paraphrases, max_negative, paraphrase_scores = args
@@ -149,8 +149,10 @@ def _create_pairings(args):
                     # Add the pairing to the list
                     example[n_neg + 2] = lookup[idx_2]["text"]
 
-                    temp_paraphrase_info.append((anchor, example[n_neg + 2],
-                                                 paraphrase_scores[(sentences[i], idx_2)]))
+                    # temp_paraphrase_info.append((anchor, example[n_neg + 2],
+                    #                             paraphrase_scores[(sentences[i], idx_2)]))
+                    temp_paraphrase_info[(anchor, example[n_neg + 2],
+                                         paraphrase_scores[(sentences[i], idx_2)])] += 1
 
                     # Increment the number of negative examples
                     n_neg += 1
@@ -350,7 +352,7 @@ def create_pairings(df: pd.DataFrame,
     posneg_conv = 0
     none_conv = 0
 
-    paraphrase_info = []
+    paraphrase_info = defaultdict(int)
 
     # Create a pool of processes
     with Pool(n_cores) as pool:
@@ -375,7 +377,8 @@ def create_pairings(df: pd.DataFrame,
             posneg_conv += result[8]
             none_conv += result[9]
 
-            paraphrase_info += result[10]
+            for key, value in result[10].items():
+                paraphrase_info[key] += value
 
             progress_bar.update(1)
 
@@ -433,12 +436,14 @@ def create_pairings(df: pd.DataFrame,
     random.shuffle(pairings)
 
     # Create a new dataframe for all the used paraphrases
-    paraphrase_df = pd.DataFrame(paraphrase_info, columns=[
-        "Anchor", "Paraphrase", "Score"])
+    # With the columns: anchor, paraphrase, score, occurrences
+    paraphrase_df = pd.DataFrame(
+        columns=["anchor", "paraphrase", "score", "occurrences"])
 
-    # Count the number of times each anchor-paraphrase pair occurs
-    paraphrase_df = paraphrase_df.groupby(
-        ["Anchor", "Paraphrase"]).count().reset_index()
+    # Add the paraphrases to the dataframe
+    for key, value in paraphrase_info.items():
+        paraphrase_df = paraphrase_df.append(
+            {"anchor": key[0], "paraphrase": key[1], "score": key[2], "occurrences": value}, ignore_index=True)
 
     # Save the paraphrase_df
     paraphrase_df.to_pickle(
