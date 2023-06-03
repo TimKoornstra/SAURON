@@ -82,7 +82,6 @@ def _create_pairings(args):
         semantic pairings.
     """
     # Create the temporary variables
-    temp_pairings = []  # List of all non-semantic pairings
     temp_s_pairings = []  # List of semantic pairings
     temp_conversations = set()  # Set of conversations
     # Number of utterances per author in the data
@@ -98,11 +97,8 @@ def _create_pairings(args):
     temp_paraphrase_info = defaultdict(int)
 
     # Unpack the arguments
-    authors, data, lookup, paraphrases, max_negative, paraphrase_scores = args
+    authors, data, lookup, paraphrases, paraphrase_scores = args
 
-    # Save the keys of the data for random sampling
-    data_keys = list(data.keys())
-    
     # Create a defaultdict for counting paraphrase frequencies
     paraphrase_counts = defaultdict(int)
 
@@ -123,6 +119,9 @@ def _create_pairings(args):
             # Count the number of paraphrases used for this anchor
             n_anchor_paraphrases = 0
 
+            # Create a set to track chosen (anchor, paraphrase) pairs
+            chosen_pairs = set()
+
             # Iterate through the rest of the sentences by the same author.
             # We include the current sentence, so that the model can learn
             # that semantically similar is not necessarily a different
@@ -131,7 +130,7 @@ def _create_pairings(args):
                 # Create a predetermined size list of the examples, so that
                 # it contains the anchor, the positive example, and the
                 # negative examples
-                example = [None] * (max_negative + 2)
+                example = [None] * 3
                 pos = lookup[sentences[j]]["text"]
                 pos_conv = lookup[sentences[j]]["conversation_id"]
 
@@ -139,112 +138,79 @@ def _create_pairings(args):
                 example[0] = anchor
                 example[1] = pos
 
-                # Set the number of negative examples for this positive
-                # example to 0 and a flag to check if all the negative
-                # examples are semantically similar
-                n_neg = 0
-                all_similar = False
-                
                 # Consider the first 10 paraphrases for this anchor
                 top_paraphrases = paraphrases[sentences[i]][:10]
-                
+
+                # If there are no unique paraphrases left, skip this
+                if len(set(top_paraphrases) - chosen_pairs) < 1:
+                    continue
+
                 # Calculate weights based on rank and inverse frequency
-                total_freq = sum(paraphrase_counts[lookup[idx]["text"]] for idx in top_paraphrases)
-                weights = [(1/(paraphrase_counts[lookup[idx]["text"]] or 1))*(1 - rank/len(top_paraphrases)) for rank, idx in enumerate(top_paraphrases)]
-                
-                for k in range(n_anchor_paraphrases, len(top_paraphrases)):
-                    # Sample a negative example with weighted choice
-                    idx_2 = random.choices(top_paraphrases, weights=weights)[0]
+                weights = [(1/(paraphrase_counts[lookup[idx]["text"]] or 1)) *
+                           (1 - rank / len(top_paraphrases))
+                           for rank, idx in enumerate(top_paraphrases)]
 
-                    # Add the pairing to the list
-                    example[n_neg + 2] = lookup[idx_2]["text"]
-                    
-                    # Update the frequency count
-                    paraphrase_counts[lookup[idx_2]["text"]] += 1
+                # Sample a negative example with weighted choice
+                while True:
+                    idx_2 = random.choices(
+                        top_paraphrases, weights=weights)[0]
 
-                    temp_paraphrase_info[(anchor, example[n_neg + 2],
-                                         paraphrase_scores[(sentences[i], idx_2)])] += 1
+                    # Check if this (anchor, paraphrase) pair has already been
+                    # chosen
+                    if (sentences[i], idx_2) not in chosen_pairs:
+                        break  # if the pair hasn't been chosen, break the loop
 
-                    # Increment the number of negative examples
-                    n_neg += 1
+                # Add the pairing to the list
+                example[2] = lookup[idx_2]["text"]
 
-                    # Increment the number of paraphrases used for this
-                    # anchor
-                    n_anchor_paraphrases += 1
+                # Update the frequency count
+                paraphrase_counts[lookup[idx_2]["text"]] += 1
 
-                    # Add the negative example and the positive example to
-                    # the set of conversations
-                    temp_conversations.add(lookup[idx_2]["conversation_id"])
+                # Add this pair to the set of chosen pairs
+                chosen_pairs.add((sentences[i], idx_2))
 
-                    temp_conversations.add(
-                        lookup[sentences[j]]["conversation_id"])
+                temp_paraphrase_info[(anchor, example[2],
+                                     paraphrase_scores[(sentences[i], idx_2)])] += 1
 
-                    temp_authors[lookup[idx_2]["author_id"]] += 1
+                # Increment the number of paraphrases used for this
+                # anchor
+                n_anchor_paraphrases += 1
 
-                    # Collect conversation info
-                    neg_conv = lookup[idx_2]["conversation_id"]
+                # Add the negative example and the positive example to
+                # the set of conversations
+                temp_conversations.add(lookup[idx_2]["conversation_id"])
 
-                    if anchor_conv == pos_conv:
-                        if anchor_conv == neg_conv:
-                            temp_same_conv += 1
-                        else:
-                            temp_anchorpos_conv += 1
-                    elif anchor_conv == neg_conv:
-                        temp_anchorneg_conv += 1
-                    elif pos_conv == neg_conv:
-                        temp_posneg_conv += 1
+                temp_conversations.add(
+                    lookup[sentences[j]]["conversation_id"])
+
+                temp_authors[lookup[idx_2]["author_id"]] += 1
+
+                # Collect conversation info
+                neg_conv = lookup[idx_2]["conversation_id"]
+
+                if anchor_conv == pos_conv:
+                    if anchor_conv == neg_conv:
+                        temp_same_conv += 1
                     else:
-                        temp_none_conv += 1
-
-                    # If we have enough negative examples, break
-                    if n_neg >= max_negative:
-                        all_similar = True
-                        break
-
-                """
-                # If we do not have enough negative examples, we need to
-                # create some random negative examples
-                while n_neg < max_negative:
-                    # Get a random sentence from a random author
-                    # Make sure that the random author is not the same as
-                    # current author
-                    while (random_author := random.choice(data_keys)) == author_id:
-                        continue
-
-                    random_sentence = random.choice(data[random_author])
-
-                    # Add the pairing to the list
-                    example[n_neg + 2] = lookup[random_sentence]["text"]
-
-                    # Increment the number of negative examples
-                    n_neg += 1
-
-                    # Increment the number of examples for the random
-                    temp_authors[random_author] += 1
-                """
+                        temp_anchorpos_conv += 1
+                elif anchor_conv == neg_conv:
+                    temp_anchorneg_conv += 1
+                elif pos_conv == neg_conv:
+                    temp_posneg_conv += 1
+                else:
+                    temp_none_conv += 1
 
                 # Add the example to the list of examples
-                if all_similar:
-                    temp_s_pairings.append(example)
-                    temp_authors[author_id] += 2
-                    temp_count_anchor[sentences[i]] += 1
-                    break
-                """
-                else:
-                    temp_pairings.append(example)
-                    temp_authors[author_id] += 2
-                    temp_count_anchor[sentences[i]] += 1
-                """
+                temp_s_pairings.append(example)
+                temp_authors[author_id] += 2
+                temp_count_anchor[sentences[i]] += 1
 
-    return (temp_pairings, temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_same_conv, temp_anchorpos_conv, temp_anchorneg_conv, temp_posneg_conv, temp_none_conv, temp_paraphrase_info)
+    return (temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_same_conv, temp_anchorpos_conv, temp_anchorneg_conv, temp_posneg_conv, temp_none_conv, temp_paraphrase_info)
 
 
 def create_pairings(df: pd.DataFrame,
                     output_path: str,
-                    output_name: str,
-                    max_negative: int = 1,
-                    semantic_range: Tuple[float, float] = (0.7, 1.0),
-                    semantic_proportion: float = 0.5) -> List[List[str]]:
+                    output_name: str):
     """
     Create the pairings for the data. The pairings are created by taking
     each sentence and finding the n most similar sentences. The most similar
@@ -254,12 +220,6 @@ def create_pairings(df: pd.DataFrame,
     ----------
     df : pd.DataFrame
         The DataFrame to create the pairings from.
-    n_negative_examples : int
-        The number of negative examples to create for each positive example.
-    semantic_range : Tuple[float, float]
-        The inclusive range of semantic similarity to use for semantic filtering.
-    semantic_proportion : float
-        The proportion of the pairings to be semantic.
     output_path : str
         The path to save the pairings to.
     output_name : str
@@ -296,14 +256,7 @@ def create_pairings(df: pd.DataFrame,
                                         output_path=output_path,
                                         output_name=output_name)
 
-    print(f"Paraphrases before semantic filtering: {paraphrases.shape[0]}")
-
-    # Filter the paraphrases to only include those that are within the
-    # semantic range
-    paraphrases = paraphrases[(paraphrases["similarity"] >= semantic_range[0]) &
-                              (paraphrases["similarity"] <= semantic_range[1])]
-
-    print(f"Paraphrases after semantic filtering: {paraphrases.shape[0]}")
+    print(f"Paraphrases calculated. {len(paraphrases)} paraphrases found.")
 
     # Start a timer
     start = time.time()
@@ -349,10 +302,9 @@ def create_pairings(df: pd.DataFrame,
     chunks = (data_items[i::n_cores] for i in range(n_cores))
 
     chunk_args = ((chunk, {k: data[k] for k, _ in chunk}, lookup,
-                   paraphrases, max_negative, paraphrase_scores) for chunk in chunks)
+                   paraphrases,  paraphrase_scores) for chunk in chunks)
 
-    semantic_pairings = []
-    regular_pairings = []
+    pairings = []
     conversations = set()
     authors = defaultdict(int)
     count_anchor = defaultdict(int)
@@ -372,23 +324,22 @@ def create_pairings(df: pd.DataFrame,
 
         # Flatten the list of lists and separate the pairings and semantic pairings
         for result in pool.imap(_create_pairings, chunk_args):
-            regular_pairings.extend(result[0])
-            semantic_pairings.extend(result[1])
-            conversations.update(result[2])
+            pairings.extend(result[0])
+            conversations.update(result[1])
 
-            for key, value in result[3].items():
+            for key, value in result[2].items():
                 authors[key] += value
 
-            for key, value in result[4].items():
+            for key, value in result[3].items():
                 count_anchor[key] += value
 
-            same_conv += result[5]
-            anchorpos_conv += result[6]
-            anchorneg_conv += result[7]
-            posneg_conv += result[8]
-            none_conv += result[9]
+            same_conv += result[4]
+            anchorpos_conv += result[5]
+            anchorneg_conv += result[6]
+            posneg_conv += result[7]
+            none_conv += result[8]
 
-            for key, value in result[10].items():
+            for key, value in result[9].items():
                 paraphrase_info[key] += value
 
             progress_bar.update(1)
@@ -398,21 +349,7 @@ def create_pairings(df: pd.DataFrame,
     # End the timer and print the time it took to create the pairings
     end = time.time()
     print(
-        f"Created {len(regular_pairings) + len(semantic_pairings)} pairings in {end-start} seconds.")
-
-    print(f"Found {len(semantic_pairings)} semantic pairings.")
-
-    # Combine the pairings and the semantic pairings such that the semantic
-    # pairings are first in the list and the regular pairings are second,
-    # following the semantic_proportion constraint
-    n_regular = 0  # int(((1 - semantic_proportion) *
-    #      len(semantic_pairings)) / semantic_proportion)
-
-    print(
-        f"Using {len(semantic_pairings)} semantic pairings and {min(n_regular,len(regular_pairings))} regular pairings from {len(conversations)} conversations.")
-
-    # Combine the pairings and the semantic pairings
-    pairings = semantic_pairings + regular_pairings[:n_regular]
+        f"Found {len(pairings)} semantic pairings in {end - start:.2f} seconds.")
 
     # Temp variables for statistics
     author_values = authors.values()
@@ -452,7 +389,10 @@ def create_pairings(df: pd.DataFrame,
     # Add the paraphrases to the list
     for key, value in paraphrase_info.items():
         paraphrase_list.append(
-            {"anchor": key[0], "paraphrase": key[1], "score": key[2], "occurrences": value})
+            {"anchor": key[0],
+             "paraphrase": key[1],
+             "score": key[2],
+             "occurrences": value})
 
     # Convert the list into a DataFrame
     paraphrase_df = pd.DataFrame(paraphrase_list)
@@ -464,7 +404,5 @@ def create_pairings(df: pd.DataFrame,
     # Save the pairings
     with open(f"{output_path}/paired/{output_name}-pairings.pkl", "wb") as f:
         pickle.dump(pairings, f)
-    with open(f"{output_path}/paired/{output_name}-s_pairings.pkl", "wb") as f:
-        pickle.dump(semantic_pairings, f)
 
     return pairings

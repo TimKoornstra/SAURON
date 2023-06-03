@@ -85,27 +85,18 @@ def training_mode(args):
     print("-" * 80)
     print("Train set:")
     train_pairings = create_pairings(train,
-                                     semantic_range=(0.0, 1.0),
-                                     semantic_proportion=1.0,
-                                     max_negative=1,
                                      output_path=args.path,
                                      output_name="train")
 
     print("-" * 80)
     print("Validation set:")
     val_pairings = create_pairings(val,
-                                   semantic_range=(0.0, 1.0),
-                                   semantic_proportion=1.0,
-                                   max_negative=1,
                                    output_path=args.path,
                                    output_name="val")
 
     print("-" * 80)
     print("Test set:")
     test_pairings = create_pairings(test,
-                                    semantic_range=(0.0, 1.0),
-                                    semantic_proportion=1.0,
-                                    max_negative=1,
                                     output_path=args.path,
                                     output_name="test")
 
