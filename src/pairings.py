@@ -102,6 +102,9 @@ def _create_pairings(args):
 
     # Save the keys of the data for random sampling
     data_keys = list(data.keys())
+    
+    # Create a defaultdict for counting paraphrase frequencies
+    paraphrase_counts = defaultdict(int)
 
     # Iterate through each author
     for author_id, sentences in authors:
@@ -141,16 +144,24 @@ def _create_pairings(args):
                 # examples are semantically similar
                 n_neg = 0
                 all_similar = False
-
-                for k in range(n_anchor_paraphrases, len(paraphrases[sentences[i]])):
-                    # Get the index of the paraphrase
-                    idx_2 = paraphrases[sentences[i]][k]
+                
+                # Consider the first 10 paraphrases for this anchor
+                top_paraphrases = paraphrases[sentences[i]][:10]
+                
+                # Calculate weights based on rank and inverse frequency
+                total_freq = sum(paraphrase_counts[lookup[idx]["text"]] for idx in top_paraphrases)
+                weights = [(1/(paraphrase_counts[lookup[idx]["text"]] or 1))*(1 - rank/len(top_paraphrases)) for rank, idx in enumerate(top_paraphrases)]
+                
+                for k in range(n_anchor_paraphrases, len(top_paraphrases)):
+                    # Sample a negative example with weighted choice
+                    idx_2 = random.choices(top_paraphrases, weights=weights)[0]
 
                     # Add the pairing to the list
                     example[n_neg + 2] = lookup[idx_2]["text"]
+                    
+                    # Update the frequency count
+                    paraphrase_counts[lookup[idx_2]["text"]] += 1
 
-                    # temp_paraphrase_info.append((anchor, example[n_neg + 2],
-                    #                             paraphrase_scores[(sentences[i], idx_2)]))
                     temp_paraphrase_info[(anchor, example[n_neg + 2],
                                          paraphrase_scores[(sentences[i], idx_2)])] += 1
 
