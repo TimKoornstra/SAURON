@@ -88,11 +88,13 @@ def _create_pairings(args):
     temp_authors = defaultdict(int)
     temp_count_anchor = defaultdict(int)  # Number of times an anchor is used
 
-    temp_same_conv = 0
-    temp_anchorpos_conv = 0
-    temp_anchorneg_conv = 0
-    temp_posneg_conv = 0
-    temp_none_conv = 0
+    conversation_counts = {
+        "same_conv": 0,
+        "anchorpos_conv": 0,
+        "anchorneg_conv": 0,
+        "posneg_conv": 0,
+        "none_conv": 0,
+    }
 
     temp_paraphrase_info = defaultdict(int)
 
@@ -139,26 +141,19 @@ def _create_pairings(args):
                 example[1] = pos
 
                 # Consider the first 10 paraphrases for this anchor
-                top_paraphrases = paraphrases[sentences[i]][:10]
+                top_paraphrases = [idx for idx in paraphrases[sentences[i]][:10] if (sentences[i], idx) not in chosen_pairs]
 
                 # If there are no unique paraphrases left, skip this
-                if len(set(top_paraphrases) - chosen_pairs) < 1:
-                    continue
-
+                if len(top_paraphrases) < 1:
+                    break
+                    
                 # Calculate weights based on rank and inverse frequency
                 weights = [(1/(paraphrase_counts[lookup[idx]["text"]] or 1)) *
                            (1 - rank / len(top_paraphrases))
                            for rank, idx in enumerate(top_paraphrases)]
 
                 # Sample a negative example with weighted choice
-                while True:
-                    idx_2 = random.choices(
-                        top_paraphrases, weights=weights)[0]
-
-                    # Check if this (anchor, paraphrase) pair has already been
-                    # chosen
-                    if (sentences[i], idx_2) not in chosen_pairs:
-                        break  # if the pair hasn't been chosen, break the loop
+                idx_2 = random.choices(top_paraphrases, weights=weights)[0]
 
                 # Add the pairing to the list
                 example[2] = lookup[idx_2]["text"]
@@ -179,7 +174,6 @@ def _create_pairings(args):
                 # Add the negative example and the positive example to
                 # the set of conversations
                 temp_conversations.add(lookup[idx_2]["conversation_id"])
-
                 temp_conversations.add(
                     lookup[sentences[j]]["conversation_id"])
 
@@ -188,24 +182,25 @@ def _create_pairings(args):
                 # Collect conversation info
                 neg_conv = lookup[idx_2]["conversation_id"]
 
+                # Collect conversation info
                 if anchor_conv == pos_conv:
                     if anchor_conv == neg_conv:
-                        temp_same_conv += 1
+                        conversation_counts["same_conv"] += 1
                     else:
-                        temp_anchorpos_conv += 1
+                        conversation_counts["anchorpos_conv"] += 1
                 elif anchor_conv == neg_conv:
-                    temp_anchorneg_conv += 1
+                    conversation_counts["anchorneg_conv"] += 1
                 elif pos_conv == neg_conv:
-                    temp_posneg_conv += 1
+                    conversation_counts["posneg_conv"] += 1
                 else:
-                    temp_none_conv += 1
+                    conversation_counts["none_conv"] += 1
 
                 # Add the example to the list of examples
                 temp_s_pairings.append(example)
                 temp_authors[author_id] += 2
                 temp_count_anchor[sentences[i]] += 1
 
-    return (temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_same_conv, temp_anchorpos_conv, temp_anchorneg_conv, temp_posneg_conv, temp_none_conv, temp_paraphrase_info)
+    return (temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_paraphrase_info)
 
 
 def create_pairings(df: pd.DataFrame,
@@ -309,11 +304,7 @@ def create_pairings(df: pd.DataFrame,
     authors = defaultdict(int)
     count_anchor = defaultdict(int)
 
-    same_conv = 0
-    anchorpos_conv = 0
-    anchorneg_conv = 0
-    posneg_conv = 0
-    none_conv = 0
+    conversation_counts = defaultdict(int)
 
     paraphrase_info = defaultdict(int)
 
@@ -333,13 +324,10 @@ def create_pairings(df: pd.DataFrame,
             for key, value in result[3].items():
                 count_anchor[key] += value
 
-            same_conv += result[4]
-            anchorpos_conv += result[5]
-            anchorneg_conv += result[6]
-            posneg_conv += result[7]
-            none_conv += result[8]
+            for key, value in result[4].items():
+                conversation_counts[key] += value
 
-            for key, value in result[9].items():
+            for key, value in result[5].items():
                 paraphrase_info[key] += value
 
             progress_bar.update(1)
@@ -371,11 +359,11 @@ def create_pairings(df: pd.DataFrame,
         f"Average an anchor occurs:    {sum(count_anchor_values) / len(count_anchor):>5.2f}")
     print("-----------------------------")
     print("Conversations is the same for")
-    print(f"All:        {same_conv:>5}")
-    print(f"Anchor-pos: {anchorpos_conv:>5}")
-    print(f"Anchor-neg: {anchorneg_conv:>5}")
-    print(f"Pos-neg:    {posneg_conv:>5}")
-    print(f"None:       {none_conv:>5}")
+    print(f"All:        {conversation_counts['same_conv']:>5}")
+    print(f"Anchor-pos: {conversation_counts['anchorpos_conv']:>5}")
+    print(f"Anchor-neg: {conversation_counts['anchorneg_conv']:>5}")
+    print(f"Pos-neg:    {conversation_counts['posneg_conv']:>5}")
+    print(f"None:       {conversation_counts['none_conv']:>5}")
     print("-----------------------------")
     print("==============================")
 

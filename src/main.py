@@ -88,6 +88,7 @@ def training_mode(args):
                                      output_path=args.path,
                                      output_name="train")
 
+    """
     print("-" * 80)
     print("Validation set:")
     val_pairings = create_pairings(val,
@@ -125,6 +126,7 @@ def training_mode(args):
                    threshold=threshold,
                    stel_dir=f"{args.path}/STEL/")
     print("Model evaluated.")
+    """
 
 
 def interactive_mode(model_path, data_path):
