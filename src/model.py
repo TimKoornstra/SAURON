@@ -3,18 +3,20 @@
 import csv
 import os
 import random
+from typing import List, Tuple, Union
 
 # Third Party
+import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score
 from sentence_transformers import SentenceTransformer, losses, InputExample, evaluation
 from sentence_transformers.util import cos_sim
 import torch
 from torch.utils.data import DataLoader
+from torch import Tensor
 
 # Local
 from utils import contrastive_to_binary
-from typing import List, Union
 
 
 class StyleEmbeddingModel:
@@ -44,6 +46,8 @@ class StyleEmbeddingModel:
             The base model to use for the SentenceTransformer model.
         name : str
             The name of the model.
+        model_path : str
+            The path to the model.
         cache_path : str
             The path to the cache directory.
         output_path : str
@@ -56,6 +60,16 @@ class StyleEmbeddingModel:
         else:
             self.model = SentenceTransformer(base_model,
                                              cache_folder=cache_path)
+
+            # Add custom tokens
+            special_tokens_dict = {
+                'additional_special_tokens': ['[URL]', '[MENTION]']}
+            self.model.tokenizer.add_tokens(
+                special_tokens_dict['additional_special_tokens'])
+
+            # Resize the token embeddings
+            self.model.auto_model.resize_token_embeddings(
+                len(self.model.tokenizer))
 
         self.name = name
         self.output_path = output_path
@@ -116,16 +130,16 @@ class StyleEmbeddingModel:
                        output_path=f"{self.output_path}/{self.name}")
 
     def similarity(self,
-                   first: Union[str, List[str]],
-                   second: Union[str, List[str]]) -> torch.Tensor:
+                   first: Union[str, List[str], np.ndarray, Tensor],
+                   second: Union[str, List[str], np.ndarray, Tensor]) -> torch.Tensor:
         """
         Calculate the cosine similarity between two sentences.
 
         Parameters
         ----------
-        first : Union[str, List[str]]
+        first : Union[str, List[str], np.ndarray, Tensor]
             The first sentence.
-        second : Union[str, List[str]]
+        second : Union[str, List[str], np.ndarray, Tensor]
             The second sentence.
 
         Returns
@@ -134,24 +148,21 @@ class StyleEmbeddingModel:
             The cosine similarity between the (lists of) sentences.
         """
 
-        # Get the embeddings for the sentences
-        embeddings1 = self.model.encode(
-            first, device="cuda")
-        embeddings2 = self.model.encode(
-            second, device="cuda")
-
-        # Calculate the cosine similarity between the embeddings
         if isinstance(first, str):
-            cosine_similarities = [cos_sim(embeddings1, embeddings2)]
+            first = self.model.encode(first, device="cuda")
+            second = self.model.encode(second, device="cuda")
+
+        if first.ndim == 1:
+            cosine_similarities = [cos_sim(first, second)]
         else:
-            cosine_similarities = [cos_sim(embeddings1[i], embeddings2[i])
-                                   for i in range(len(embeddings1))]
+            cosine_similarities = [
+                cos_sim(first[i], second[i]) for i in range(len(first))]
 
         return torch.tensor(cosine_similarities)
 
     def _predict_cos(self,
-                     first: Union[str, List[str]],
-                     second: Union[str, List[str]],
+                     first: Union[str, List[str], np.ndarray, Tensor],
+                     second: Union[str, List[str], np.ndarray, Tensor],
                      threshold: int = 0.5) -> List[int]:
         """
         Predict whether two sentences are written by the same author based
@@ -159,9 +170,9 @@ class StyleEmbeddingModel:
 
         Parameters
         ----------
-        first : Union[str, List[str]]
+        first : Union[str, List[str], np.ndarray, Tensor]
             The first sentence.
-        second : Union[str, List[str]]
+        second : Union[str, List[str], np.ndarray, Tensor]
             The second sentence.
         threshold : int
             The threshold to use for the prediction.
@@ -172,127 +183,123 @@ class StyleEmbeddingModel:
             The prediction(s).
         """
 
-        # Get the cosine similarity between the sentences
-        cosine_similarities = self.similarity(first, second)
+        if isinstance(first, str):
+            first = self.model.encode(first, device="cuda")
+            second = self.model.encode(second, device="cuda")
 
-        # Return the predictions
+        cosine_similarities = self.similarity(first, second)
         return (cosine_similarities > threshold).int().tolist()
 
     def _predict_cav(self,
-                     anchor: Union[str, List[str]],
-                     first: Union[str, List[str]],
-                     second: Union[str, List[str]]) -> List[int]:
+                     anchor: Union[str, List[str], np.ndarray, Tensor],
+                     first: Union[str, List[str], np.ndarray, Tensor],
+                     second: Union[str, List[str], np.ndarray, Tensor]) -> List[int]:
 
         assert len(anchor) == len(first) == len(second)
 
-        # Get the similarity between the anchor and the other sentences
+        if isinstance(anchor, str):
+            anchor = self.model.encode(anchor, device="cuda")
+            first = self.model.encode(first, device="cuda")
+            second = self.model.encode(second, device="cuda")
+
         A1_S1 = self.similarity(anchor, first)
         A1_S2 = self.similarity(anchor, second)
-
-        # Return the prediction
         return (A1_S1 < A1_S2).int().tolist()
 
+    def _STEL_tasks(self,
+                    stel_dir: str):
+
+        for file in os.listdir(stel_dir):
+            if file.endswith(".tsv"):
+                task = pd.read_csv(f"{stel_dir}/{file}", sep="\t")
+                task_name = task["style type"].iloc[0]
+
+                anchors1 = self.model.encode(
+                    task["Anchor 1"].tolist(), convert_to_tensor=True)
+                anchors2 = self.model.encode(
+                    task["Anchor 2"].tolist(), convert_to_tensor=True)
+                alts1 = self.model.encode(
+                    task["Alternative 1.1"].tolist(), convert_to_tensor=True)
+                alts2 = self.model.encode(
+                    task["Alternative 1.2"].tolist(), convert_to_tensor=True)
+                correct_alternative = task["Correct Alternative"].tolist()
+
+                task_data = list(
+                    zip(anchors1, anchors2, alts1, alts2, correct_alternative))
+
+                print(f"Evaluating for {task_name}...")
+                self._predict_STEL(task_data, task_name)
+
+                stel_oc_task_data = []
+
+                for anchor_1, anchor_2, alt_1, alt_2, correct_alternative in zip(anchors1, anchors2, alts1, alts2, correct_alternative):
+                    # If the correct_alternative is 1, anchor_1 is the first in tuple
+                    if correct_alternative == 1:
+                        stel_oc_task_data.append(
+                            (anchor_1, alt_1, anchor_2))  # Alternative 1.1
+                        stel_oc_task_data.append(
+                            (anchor_2, alt_2, anchor_1))  # Alternative 1.2
+                    else:  # If the correct_alternative is 2, anchor_2 is the first in tuple
+                        stel_oc_task_data.append(
+                            (anchor_2, alt_1, anchor_1))  # Alternative 1.1
+                        stel_oc_task_data.append(
+                            (anchor_1, alt_2, anchor_2))  # Alternative 1.2
+
+                self._predict_STEL_oc(stel_oc_task_data, task_name)
+
     def _predict_STEL(self,
-                      dir_path: str):
+                      task_data: List[Tuple[Tensor, Tensor, Tensor, Tensor, int]],
+                      task_name: str) -> None:
         """
         Use the STEL framework to evaluate the model's ability to separate
         style from content.
 
         Parameters
         ----------
-        dir_path : str
-            The path to the directory containing the STEL tasks.
+        task_data : List[Tuple[Tensor, Tensor, Tensor, Tensor, int]]
+            The data for the task.
+        task_name : str
+            The name of the task.
         """
-        # Load the task instances
-        for file in os.listdir(dir_path):
-            if file.endswith(".tsv"):
-                task = pd.read_csv(f"{dir_path}/{file}",
-                                   sep="\t")
 
-                task_name = task["style type"].iloc[0]
+        # Create a list to store the predictions
+        predictions = []
 
-                # Create a list to store the predictions
-                predictions = []
+        for A1, A2, S1, S2, _ in task_data:
+            # Calculate the left and right hand sides of equation (1) from
+            # the paper https://aclanthology.org/2021.emnlp-main.569.pdf
+            lhs = (1 - cos_sim(A1, S1))**2 + (1 - cos_sim(A2, S2))**2
+            rhs = (1 - cos_sim(A1, S2))**2 + (1 - cos_sim(A2, S1))**2
 
-                for i, row in task.iterrows():
-                    # Calculate the similarities between A1, A2, S1, and S2
-                    A1_S1 = self.similarity(
-                        row["Anchor 1"], row["Alternative 1.1"])
-                    A1_S2 = self.similarity(
-                        row["Anchor 1"], row["Alternative 1.2"])
-                    A2_S1 = self.similarity(
-                        row["Anchor 2"], row["Alternative 1.1"])
-                    A2_S2 = self.similarity(
-                        row["Anchor 2"], row["Alternative 1.2"])
+            # Get the prediction
+            if lhs < rhs:
+                predictions.append(1)
+            elif lhs > rhs:
+                predictions.append(2)
+            else:
+                predictions.append(random.choice([1, 2]))
 
-                    # Calculate the left and right hand sides of equation (1) from
-                    # the paper https://aclanthology.org/2021.emnlp-main.569.pdf
-                    lhs = (1 - A1_S1)**2 + (1 - A2_S2)**2
-                    rhs = (1 - A1_S2)**2 + (1 - A2_S1)**2
+        # Calculate the accuracy of the model on this task
+        accuracy = accuracy_score([data[-1]
+                                  for data in task_data], predictions)
 
-                    # Get the prediction
-                    if lhs < rhs:
-                        predictions.append(1)
-                    if lhs > rhs:
-                        predictions.append(2)
-                    if lhs == rhs:
-                        predictions.append(random.choice([1, 2]))
-
-                # Calculate the accuracy of the model on this task
-                accuracy = accuracy_score(
-                    task["Correct Alternative"], predictions)
-
-                print(f"Accuracy on {task_name}: {accuracy}")
+        print(f"STEL:     {accuracy}")
 
     def _predict_STEL_oc(self,
-                         dir_path: str):
+                         task_data: List[Tuple[Tensor, Tensor, Tensor]],
+                         task_name: str):
 
-        # Create a dataframe for incorrect predictions
-        incorrect = pd.DataFrame(columns=["Anchor 1", "Anchor 2",
-                                          "Same Style", "A1-Same Style",
-                                          "A1-A2", "Task"])
+        # Create a list to store the predictions
+        predictions = []
 
-        # Load the task instances
-        for file in os.listdir(dir_path):
-            if file.endswith(".tsv"):
-                task = pd.read_csv(f"{dir_path}/{file}",
-                                   sep="\t")
+        for A1, S, A2 in task_data:
+            # Now it is a CAV task
+            predictions.append(int(cos_sim(A1, S) < cos_sim(A1, A2)))
 
-                task_name = task["style type"].iloc[0]
+        # Calculate the accuracy of the model on this task
+        accuracy = accuracy_score([0]*len(task_data), predictions)
 
-                # Create a list to store the predictions
-                predictions = []
-
-                for i, row in task.iterrows():
-                    # Keep the sentence with the same style
-                    if row["Correct Alternative"] == 1:
-                        same_style = row["Alternative 1.1"]
-                    else:
-                        same_style = row["Alternative 1.2"]
-
-                    # Now it is a CAV task
-                    predictions.append(self._predict_cav(
-                        [row["Anchor 1"]], [same_style], [row["Anchor 2"]])[0])
-
-                    if predictions[-1] == 1:
-                        # Add the incorrect prediction to the dataframe
-                        incorrect.loc[len(incorrect)] = {
-                            "Anchor 1": row["Anchor 1"],
-                            "Anchor 2": row["Anchor 2"],
-                            "Same Style": same_style,
-                            "A1-Same Style": self.similarity(row["Anchor 1"], same_style).item(),
-                            "A1-A2": self.similarity(row["Anchor 1"], row["Anchor 2"]).item(),
-                            "Task": task_name
-                        }
-
-                # Calculate the accuracy of the model on this task
-                accuracy = accuracy_score(
-                    [0]*len(task), predictions)
-
-                print(f"Accuracy on {task_name}: {accuracy}")
-
-        # Save the incorrect predictions to a file
-        incorrect.to_csv(f"incorrect-{self.name}.csv", index=False)
+        print(f"STEL-o-c: {accuracy}")
 
     def evaluate(self,
                  test_data: List[List[str]],
@@ -305,6 +312,8 @@ class StyleEmbeddingModel:
         ----------
         test_data : List[List[str]]
             The test data. The format is the same as the training data.
+        stel_dir : str
+            The directory containing the STEL tasks.
         threshold : int
             The cosine similarity threshold to use for the prediction.
         """
@@ -312,24 +321,28 @@ class StyleEmbeddingModel:
         # Load the test dataset
         anchor_cav, first_cav, second_cav = zip(*test_data)
 
-        test_examples = [InputExample(texts=texts, label=1)
-                         for texts in test_data]
-        test_data = contrastive_to_binary(test_examples)
+        # Compute the embeddings once for all inputs
+        anchor_embeddings = self.model.encode(anchor_cav, device="cuda")
+        first_embeddings = self.model.encode(first_cav, device="cuda")
+        second_embeddings = self.model.encode(second_cav, device="cuda")
+
+        test_data_transformed = list(
+            zip(anchor_embeddings, first_embeddings, second_embeddings))
 
         print("Evaluating on the AV task...")
-        # Predict the labels for the test data
-        first_av, second_av, actual_av = zip(*test_data)
+        test_data_av = contrastive_to_binary(test_data_transformed)
 
-        # Get the predictions
-        predicted_av = self._predict_cos(first_av, second_av, threshold)
+        first_av, second_av, actual_av = zip(*test_data_av)
+        predicted_av = self._predict_cos(
+            np.array(first_av), np.array(second_av), threshold)
 
         # Save the predictions to a csv file
         with open(f"predictions-{self.name}.csv", "w") as f:
             writer = csv.writer(f)
             writer.writerow(["First", "Second", "Actual", "Predicted"])
 
-            for first, second, actual, predicted in zip(first_av, second_av, actual_av, predicted_av):
-                writer.writerow([first, second, actual, predicted])
+            for (anchor_text, first_text, second_text), actual, predicted in zip(test_data, actual_av, predicted_av):
+                writer.writerow([first_text, second_text, actual, predicted])
 
         # Get the accuracy of the model
         accuracy_av = accuracy_score(actual_av, predicted_av)
@@ -338,20 +351,15 @@ class StyleEmbeddingModel:
         # Get the predictions for the CAV task
         print("Evaluating on the CAV task...")
 
-        predicted_cav = self._predict_cav(anchor_cav, first_cav, second_cav)
+        predicted_cav = self._predict_cav(
+            anchor_embeddings, first_embeddings, second_embeddings)
 
         actual_cav = [0] * len(anchor_cav)
         accuracy_cav = accuracy_score(actual_cav, predicted_cav)
 
         print(f"Accuracy on the CAV task: {accuracy_cav}")
 
-        """
         # Get the predictions for the STEL tasks
         if stel_dir is not None:
-            print("Evaluating on the STEL tasks...")
-            self._predict_STEL(stel_dir)
-
-            print("Evaluating on the STEL OC tasks...")
-            self._predict_STEL_oc(stel_dir)
-            
-       """
+            print("Performing STEL tasks...")
+            self._STEL_tasks(stel_dir)

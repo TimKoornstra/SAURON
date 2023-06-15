@@ -44,25 +44,6 @@ def paraphrase_mining(data: pd.DataFrame,
         cache_folder=cache_folder)
     print("Model paraphrase mining loaded.")
 
-    # We want to remove all lines from the data["text"] that start with
-    # ">" because they are replies to other comments.
-    print("Removing replies...")
-
-    # Loop through the data["text"] and remove the lines
-    for i, row in data.iterrows():
-        # Split the text into lines
-        lines = row["text"].splitlines()
-
-        # Remove the lines that start with ">"
-        lines = [line for line in lines if not line.startswith(">")]
-
-        # Join the lines back together
-        data.at[i, "text"] = "\n".join(lines)
-
-    print("Replies removed.")
-
-    # If all characters constist of emojis, replace it with ""
-    print("Removing emojis...")
     emoji_pattern = re.compile("["
                                u"\U0001F600-\U0001F64F"  # emoticons
                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
@@ -72,12 +53,27 @@ def paraphrase_mining(data: pd.DataFrame,
                                u"\U000024C2-\U0001F251"
                                "]+", flags=re.UNICODE)
 
-    # See if all characters (except for whitespace) are emojis
-    for i, row in data.iterrows():
-        if emoji_pattern.sub(r"", row["text"]).strip() == "":
-            data.at[i, "text"] = ""
+    # We want to remove all lines from the data["text"] that start with
+    # ">" because they are replies to other comments.
+    print("Removing bad potential paraphrases...")
+    count = 0
 
-    print("Emojis removed.")
+    # Loop through the data["text"] and remove the lines
+    for i, row in data.iterrows():
+        # Split the text into lines
+        lines = row["text"].splitlines()
+        stripped = row["text"].strip()
+
+        # Check if any line starts with ">"
+        if any(line.startswith(">") for line in lines)\
+                or emoji_pattern.sub(r"", stripped).strip() == ""\
+                or stripped == ".":
+            # Remove the entire text
+            data.at[i, "text"] = ""
+            count += 1
+            print(f"Disregarding {count} rows out of {len(data)}", end="\r")
+
+    print("Removed.")
 
     # Find paraphrases
     print("Finding paraphrases...")
@@ -89,19 +85,22 @@ def paraphrase_mining(data: pd.DataFrame,
         top_k=100,
     )
     print("Paraphrases found.")
+    print(len(all_paraphrases))
 
     # Remove paraphrases that are the same sentence or from the same author
     print("Removing duplicates...")
     already_seen = set()
     paraphrases = []
     for score, i, j in all_paraphrases:
-        if data["text"].iloc[i].strip() != data["text"].iloc[j].strip() and data["author_id"].iloc[i] != data["author_id"].iloc[j]:
+        if data["text"].iloc[i].strip() != data["text"].iloc[j].strip() and\
+           data["author_id"].iloc[i] != data["author_id"].iloc[j]:
             # Ensure that we only add the same i, paraphrase once to combat
             # the oversampling
             if (i, data["text"].iloc[j].strip()) not in already_seen:
                 paraphrases.append((score, i, j))
                 already_seen.add((i, data["text"].iloc[j].strip()))
     print("Duplicates removed.")
+    print(len(paraphrases))
 
     # Convert the paraphrases to a DataFrame
     paraphrases = pd.DataFrame(
@@ -110,7 +109,6 @@ def paraphrase_mining(data: pd.DataFrame,
     )
 
     print(f"Average similarity: {paraphrases['similarity'].mean():.2f}")
-    print(paraphrases.iloc[0])
 
     # Save the DataFrame to a pickle file
     if output_path:

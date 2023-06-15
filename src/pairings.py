@@ -7,10 +7,11 @@ import os
 import pickle
 import random
 import time
-from typing import List, Tuple
+from typing import Tuple
 
 # Third Party
 from multiprocessing import Pool, cpu_count
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
 import tqdm
@@ -71,15 +72,18 @@ def _create_pairings(args):
 
     Parameters
     ----------
-    authors : List[Tuple[int, List[int]]]
-        The chunk of the data containing the author_id and the indices of
-        the sentences written by that author.
+    args : Tuple[List[Tuple[str, List[str]]], pd.DataFrame, dict, dict, dict]
+        A tuple containing the list of authors, the DataFrame, the lookup
+        dictionary, the paraphrases dictionary, and the paraphrase scores
+        dictionary.
 
     Returns
     -------
-    Tuple[List[List[str]], List[Tuple[str, str]]]
-        A tuple containing the list of all pairings and the list of
-        semantic pairings.
+    Tuple[List[Tuple[str, str, str]], set, dict, dict, dict]
+        A tuple containing the list of pairings, the set of conversations,
+        the dictionary of author counts, the dictionary of anchor counts,
+        the dictionary of paraphrase counts, and the dictionary of
+        paraphrase info.
     """
     # Create the temporary variables
     temp_s_pairings = []  # List of semantic pairings
@@ -141,16 +145,18 @@ def _create_pairings(args):
                 example[1] = pos
 
                 # Consider the first 10 paraphrases for this anchor
-                top_paraphrases = [idx for idx in paraphrases[sentences[i]][:10] if (sentences[i], idx) not in chosen_pairs]
+                top_paraphrases = [idx for idx in paraphrases[sentences[i]][:10] if (
+                    sentences[i], idx) not in chosen_pairs]
 
                 # If there are no unique paraphrases left, skip this
                 if len(top_paraphrases) < 1:
                     break
-                    
-                # Calculate weights based on rank and inverse frequency
-                weights = [(1/(paraphrase_counts[lookup[idx]["text"]] or 1)) *
-                           (1 - rank / len(top_paraphrases))
-                           for rank, idx in enumerate(top_paraphrases)]
+
+                # Calculate the weights such that the first paraphrase gets the highest weight
+                rank_weights = [1 / (1 + np.sqrt(i))
+                                for i in range(len(top_paraphrases))]
+                weights = [w / sum(rank_weights)
+                           for w in rank_weights]  # Normalize weights
 
                 # Sample a negative example with weighted choice
                 idx_2 = random.choices(top_paraphrases, weights=weights)[0]
@@ -200,7 +206,12 @@ def _create_pairings(args):
                 temp_authors[author_id] += 2
                 temp_count_anchor[sentences[i]] += 1
 
-    return (temp_s_pairings, temp_conversations, temp_authors, temp_count_anchor, temp_paraphrase_info)
+    return (temp_s_pairings,
+            temp_conversations,
+            temp_authors,
+            temp_count_anchor,
+            conversation_counts,
+            temp_paraphrase_info)
 
 
 def create_pairings(df: pd.DataFrame,

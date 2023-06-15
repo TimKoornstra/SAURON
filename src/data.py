@@ -4,6 +4,7 @@ import html
 
 # Third Party
 from convokit import Corpus, download
+import dask.dataframe as dd
 import pandas as pd
 from transformers import RobertaTokenizer
 from tqdm import tqdm
@@ -64,133 +65,103 @@ def load_reddit_corpus(cache_path: str = ".cache/",
     return corpus
 
 
-def preprocess(df: pd.DataFrame,
-               data_source: str = "reddit") -> pd.DataFrame:
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Preprocess the given DataFrame based on the data source.
+    Preprocess the Reddit Corpus.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The DataFrame to preprocess.
-    data_source : str
-        The data source of the DataFrame.
+        The Reddit Corpus as a Pandas DataFrame.
 
     Returns
     -------
     pd.DataFrame
-        The preprocessed DataFrame.
+        The preprocessed Reddit Corpus as a Pandas DataFrame.
     """
     tqdm.pandas()
 
-    if data_source == "reddit":
-        # Replace mentions with the "[MENTION]" token
-        df["text"] = df["text"].str.replace(
-            r"\/?u\/[A-Za-z0-9_-]+|\/?r\/[A-Za-z0-9_]+", "[MENTION]",
-            regex=True, case=False)
-
-        # Replace all the URLs in parentheses with the "[URL]" token
-        df["text"] = df["text"].str.replace(
-            r"\((https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
-            "([URL])", regex=True, case=False
-        )
-        # And replace all the URLs not in parentheses with the "[URL]" token
-        df["text"] = df["text"].str.replace(
-            r"(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
-            "[URL]", regex=True, case=False
-        )
-
-        df_size = len(df)
-        total_authors = df["author_id"].nunique()
-
-        # Remove all RemindMe! comments
-        df = df.drop(df[df["text"].str.lower().str.contains(
-            r"!?remindme!?", regex=True, case=False)].index)
-
-        print("Removed RemindMe! comments")
+    def print_stats(df, df_size, total_authors):
+        removed_utterances = df_size - len(df)
+        removed_authors = total_authors - df['author_id'].nunique()
         print(
-            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
-        df_size = len(df)
-        total_authors = df["author_id"].nunique()
+            f"Removed {removed_utterances} utterances and {removed_authors} authors")
+        return len(df), df['author_id'].nunique()
 
-        # Remove all invalid utterances
-        df = df.drop(df[df["text"].str.strip().str.lower().isin(
-            ["[ deleted ]", "[deleted]", "[ removed ]", "[removed]", ""])]
-            .index
-        )
+    # Replace mentions and URLs with the appropriate tokens
+    df["text"] = df["text"].replace(
+        r"\/?u\/[A-Za-z0-9_-]+|\/?r\/[A-Za-z0-9_]+", "[MENTION]", regex=True)
+    df["text"] = df["text"].str.replace(
+        r"\((https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
+        "([URL])", regex=True, case=False
+    )
+    df["text"] = df["text"].str.replace(
+        r"(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})",
+        "[URL]", regex=True, case=False
+    )
 
-        print("Removed invalid utterances")
-        print(
-            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
-        df_size = len(df)
-        total_authors = df["author_id"].nunique()
+    df_size, total_authors = len(df), df["author_id"].nunique()
 
-        # (i.e., utterances that are only mentions, URLs or a combination of
-        # mentions and URLs)
-        df = df.drop(df[df["text"].str.split().apply(
-            lambda x: all(
-                word in ["[MENTION]", "[URL]"] for word in x
-            )
-        )].index)
+    df = df[~df["text"].str.lower().str.contains("remindme")]
+    print("Removed RemindMe! comments")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
-        print("Removed utterances that are only mentions and/or URLs")
-        print(
-            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
-        df_size = len(df)
-        total_authors = df["author_id"].nunique()
+    # Removed all invalid utterances
+    df = df[~df["text"].str.lower().isin(["[deleted]", "[removed]", ""])]
+    print("Removed invalid utterances")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
-        # Remove all utterances from users named "[deleted]", "MTGCardFetcher"
-        # or "AutoModerator"
-        df = df.drop(
-            df[df["author_id"].str.strip().str.lower()
-               .isin(["[deleted]", "mtgcardfetcher", "automoderator"])].index)
+    df = df[~df["text"].str.split().apply(
+        lambda x: set(x).issubset({"[MENTION]", "[URL]"}))]
+    print("Removed utterances that are only mentions and/or URLs")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
-        print(
-            "Removed utterances from users named [deleted], MTGCardFetcher and AutoModerator")
-        print(
-            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
-        df_size = len(df)
-        total_authors = df["author_id"].nunique()
+    df = df[~df["author_id"].str.lower().isin(
+        ["[deleted]", "mtgcardfetcher", "automoderator"])]
+    print(
+        "Removed utterances from users named [deleted], MTGCardFetcher and AutoModerator")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
-        # Remove all utterances from users that are likely bots
-        # (i.e. users that have a username that contains "bot" or all of their
-        # utterances contain the word "bot")
-        df = df.drop(df[
-            (df["author_id"].str.lower().str.contains(
-                "bot", regex=False, case=False)) |
-            (df["text"].str.lower().str.contains(
-                "bot", regex=False, case=False))].index)
-
-        print("Removed utterances from users that are likely bots")
-        print(
-            f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+    df = df[~(df["author_id"].str.lower().str.contains(
+        "bot") | df["text"].str.contains("bot"))]
+    print("Removed utterances from users that are likely bots")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
     # Unescape the HTML entities
     df["text"] = df["text"].apply(html.unescape)
 
-    df_size = len(df)
-    total_authors = df["author_id"].nunique()
+    df_size, total_authors = len(df), df["author_id"].nunique()
 
     # Ensure that the texts fit in the maximum length of the RoBERTa model
-    tokenizer = RobertaTokenizer.from_pretrained(
-        "roberta-base")
-    df = df.drop(df[df["text"].progress_apply(
-        lambda x: len(tokenizer.encode(x)) > 512)].index)
+    tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+
+    # Batch encode the text data
+    encoded_texts = tokenizer.batch_encode_plus(
+        df['text'].tolist(), truncation=False, padding=False)
+
+    # Find the indices of texts that are longer than the max length
+    long_texts_indices = [i for i, input_ids in enumerate(
+        encoded_texts['input_ids']) if len(input_ids) > 512]
+    # Drop the rows with these indices from the dataframe
+    df = df.iloc[[i for i in range(len(df)) if i not in long_texts_indices]]
 
     print("Removed utterances that are too long")
-    print(
-        f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
-    # Take a sample of 10 utterances per author
-    df_size = len(df)
-    total_authors = df["author_id"].nunique()
+    ddf = dd.from_pandas(df, npartitions=80)
 
-    df = df.groupby("author_id").apply(lambda x: x.sample(
-        min(len(x), 10), random_state=42)).reset_index(drop=True)
+    # Take a sample of 10 utterances per author using Dask
+    def sample(group):
+        return group.sample(min(len(group), 10), random_state=42)
+
+    ddf = ddf.groupby("author_id").apply(
+        sample, meta=ddf).reset_index(drop=True)
+
+    # Convert the Dask DataFrame back to a pandas DataFrame
+    df = ddf.compute()
 
     print("Limited utterances to 10 per author")
-    print(
-        f"Removed {df_size - len(df)} utterances and {total_authors - df['author_id'].nunique()} authors")
+    df_size, total_authors = print_stats(df, df_size, total_authors)
 
     print(f"Number of utterances: {df.shape[0]}")
     print(f"Number of authors: {df['author_id'].nunique()}")
@@ -237,10 +208,10 @@ def load_data(source: str,
 
     Parameters
     ----------
+    source : str
+        The data source of the DataFrame.
     path : str
         The path to load the DataFrame from.
-    name : str
-        The name of the DataFrame.
 
     Returns
     -------
@@ -250,18 +221,17 @@ def load_data(source: str,
     return pd.read_pickle(f"{path}/preprocessed/{source}_data.pkl")
 
 
-def pipeline(data_source: str = "reddit",
-             output_path: str = None,
+def pipeline(output_path: str = None,
              cache_path: str = ".cache/") -> pd.DataFrame:
     """
     Run the preprocessing pipeline on the given DataFrame.
 
     Parameters
     ----------
-    data_source : str
-        The data source of the DataFrame.
-    save : bool
-        Whether to save the DataFrame.
+    output_path : str, optional
+        The path to save the preprocessed DataFrame to, by default None
+    cache_path : str, optional
+        The path to the cache directory, by default ".cache/"
 
     Returns
     -------
@@ -270,17 +240,12 @@ def pipeline(data_source: str = "reddit",
     """
 
     print("Loading data...")
-    # If the data source is Reddit, load the Reddit Corpus
-    if data_source == "reddit":
-        df = load_reddit_corpus(cache_path=cache_path)
-    else:
-        raise ValueError(f"Invalid data source: {data_source}")
+    df = load_reddit_corpus(cache_path=cache_path)
     print("Data loaded.")
 
     # Preprocess the DataFrame
     print("Preprocessing data...")
-    df = preprocess(df=df,
-                    data_source=data_source)
+    df = preprocess(df=df)
     print("Data preprocessed.")
 
     # Create a subset of the DataFrame
@@ -291,7 +256,7 @@ def pipeline(data_source: str = "reddit",
     if output_path:
         # Save the DataFrame
         print("Saving data...")
-        df.to_pickle(f"{output_path}/preprocessed/{data_source}_data.pkl")
+        df.to_pickle(f"{output_path}/preprocessed/reddit_data.pkl")
         print("Data saved.")
 
     return df
