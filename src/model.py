@@ -222,28 +222,21 @@ class StyleEmbeddingModel:
                     task["Alternative 1.1"].tolist(), convert_to_tensor=True)
                 alts2 = self.model.encode(
                     task["Alternative 1.2"].tolist(), convert_to_tensor=True)
-                correct_alternative = task["Correct Alternative"].tolist()
+                correct = task["Correct Alternative"].tolist()
 
                 task_data = list(
-                    zip(anchors1, anchors2, alts1, alts2, correct_alternative))
+                    zip(anchors1, anchors2, alts1, alts2, correct))
 
                 print(f"Evaluating for {task_name}...")
                 self._predict_STEL(task_data, task_name)
 
-                stel_oc_task_data = []
+                # list comprehension
+                stel_oc_task_data = [(anchors1[i], alts1[i], anchors2[i]) if correct[i] == 1 
+                                     else (anchors1[i], alts2[i], anchors2[i]) for i in range(len(anchors1))]
 
-                for anchor_1, anchor_2, alt_1, alt_2, correct_alternative in zip(anchors1, anchors2, alts1, alts2, correct_alternative):
-                    # If the correct_alternative is 1, anchor_1 is the first in tuple
-                    if correct_alternative == 1:
-                        stel_oc_task_data.append(
-                            (anchor_1, alt_1, anchor_2))  # Alternative 1.1
-                        stel_oc_task_data.append(
-                            (anchor_2, alt_2, anchor_1))  # Alternative 1.2
-                    else:  # If the correct_alternative is 2, anchor_2 is the first in tuple
-                        stel_oc_task_data.append(
-                            (anchor_2, alt_1, anchor_1))  # Alternative 1.1
-                        stel_oc_task_data.append(
-                            (anchor_1, alt_2, anchor_2))  # Alternative 1.2
+                # extending list comprehension with the second pairs
+                stel_oc_task_data.extend([(anchors2[i], alts2[i], anchors1[i]) if correct[i] == 1 
+                                          else (anchors2[i], alts1[i], anchors1[i]) for i in range(len(anchors2))])
 
                 self._predict_STEL_oc(stel_oc_task_data, task_name)
 
