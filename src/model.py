@@ -68,9 +68,8 @@ class StyleEmbeddingModel:
                 special_tokens_dict['additional_special_tokens'])
 
             # Resize the token embeddings
-            self.model.auto_model.resize_token_embeddings(
-                len(self.model.tokenizer))
-
+            self.model._first_module().auto_model.resize_token_embeddings(len(self.model.tokenizer))
+            
         self.name = name
         self.output_path = output_path
 
@@ -107,9 +106,9 @@ class StyleEmbeddingModel:
         train_loss = losses.MultipleNegativesRankingLoss(self.model)
 
         # Load the validation dataset
-        val_examples = [InputExample(texts=texts, label=1)
-                        for texts in val_data]
-        val_data = contrastive_to_binary(val_examples)
+        #val_examples = [InputExample(texts=texts, label=1)
+        #                for texts in val_data]
+        val_data = contrastive_to_binary(val_data)
 
         # Validation split
         val_sen1, val_sen2, val_labels = zip(*val_data)

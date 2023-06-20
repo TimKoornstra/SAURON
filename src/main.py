@@ -87,7 +87,7 @@ def training_mode(args):
     train_pairings = create_pairings(train,
                                      output_path=args.path,
                                      output_name="train")
-
+                                     
     print("-" * 80)
     print("Validation set:")
     val_pairings = create_pairings(val,
@@ -106,7 +106,7 @@ def training_mode(args):
     model = StyleEmbeddingModel(base_model="roberta-base",
                                 cache_path=args.cache_path,
                                 output_path=args.output_path,
-                                name=f"style-allsemv7-{args.epochs}-{args.batch_size}")
+                                name=f"style-allsemv8-{args.epochs}-{args.batch_size}")
 
     # Train the model
     print("Training model...")

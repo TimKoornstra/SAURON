@@ -71,27 +71,36 @@ def paraphrase_mining(data: pd.DataFrame,
             # Remove the entire text
             data.at[i, "text"] = ""
             count += 1
-            print(f"Disregarding {count} rows out of {len(data)}", end="\r")
+    
+    print(f"Disregarded {count} rows out of {len(data)}")
 
     print("Removed.")
+    
+    mapping = {i: new_index for new_index, i in enumerate(data.index)}
+    texts = [text for text in data["text"].tolist() if text.strip() != ""]
+    mapping = {new_index: mapping[old_index] for new_index, old_index in enumerate(i for i, text in enumerate(data["text"].tolist()) if text.strip() != "")}
 
     # Find paraphrases
     print("Finding paraphrases...")
     all_paraphrases = util.paraphrase_mining(
         model,
-        data["text"].tolist(),
+        texts,
         show_progress_bar=True,
         max_pairs=100000000,
         top_k=100,
+        batch_size=512
     )
     print("Paraphrases found.")
     print(len(all_paraphrases))
-
+    
+    # Map the indices in all_paraphrases to their original values
+    all_paraphrases_mapped = [(score, mapping[i], mapping[j]) for score, i, j in all_paraphrases]
+    
     # Remove paraphrases that are the same sentence or from the same author
     print("Removing duplicates...")
     already_seen = set()
     paraphrases = []
-    for score, i, j in all_paraphrases:
+    for score, i, j in all_paraphrases_mapped:
         if data["text"].iloc[i].strip() != data["text"].iloc[j].strip() and\
            data["author_id"].iloc[i] != data["author_id"].iloc[j]:
             # Ensure that we only add the same i, paraphrase once to combat
