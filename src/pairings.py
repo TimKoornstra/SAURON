@@ -8,7 +8,7 @@ import pickle
 import random
 import time
 from multiprocessing import Pool, cpu_count
-from typing import Tuple
+from typing import List, Tuple
 
 # Third Party
 import numpy as np
@@ -66,7 +66,8 @@ def split_data(df: pd.DataFrame,
     return train, val, test
 
 
-def _create_pairings(args):
+def _create_pairings(args: Tuple[List[Tuple[str, List[str]]], pd.DataFrame, dict, dict, dict])\
+        -> Tuple[List[Tuple[str, str, str]], set, dict, dict, dict]:
     """
     A helper function to create the pairings for a chunk of the data.
 
@@ -117,8 +118,6 @@ def _create_pairings(args):
             anchor_conv = lookup[sentences[i]]["conversation_id"]
 
             # Add the conversation to the set of conversations
-            # Take the author_id and the sentence to find the
-            # conversation_id in the df
             temp_conversations.add(
                 lookup[sentences[i]]["conversation_id"])
 
@@ -129,13 +128,10 @@ def _create_pairings(args):
             chosen_pairs = set()
 
             # Iterate through the rest of the sentences by the same author.
-            # We include the current sentence, so that the model can learn
-            # that semantically similar is not necessarily a different
-            # author.
             for j in range(i+1, len(sentences)):
                 # Create a predetermined size list of the examples, so that
                 # it contains the anchor, the positive example, and the
-                # negative examples
+                # negative example
                 example = [None] * 3
                 pos = lookup[sentences[j]]["text"]
                 pos_conv = lookup[sentences[j]]["conversation_id"]
