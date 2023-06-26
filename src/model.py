@@ -150,8 +150,8 @@ class StyleEmbeddingModel:
         """
 
         if isinstance(first, str):
-            first = self.model.encode(first, device="cuda")
-            second = self.model.encode(second, device="cuda")
+            first = self.model.encode(first)
+            second = self.model.encode(second)
 
         if first.ndim == 1:
             cosine_similarities = [cos_sim(first, second)]
@@ -335,9 +335,9 @@ class StyleEmbeddingModel:
         anchor_cav, first_cav, second_cav = zip(*test_data)
 
         # Compute the embeddings once for all inputs
-        anchor_embeddings = self.model.encode(anchor_cav, device="cuda")
-        first_embeddings = self.model.encode(first_cav, device="cuda")
-        second_embeddings = self.model.encode(second_cav, device="cuda")
+        anchor_embeddings = self.model.encode(anchor_cav)
+        first_embeddings = self.model.encode(first_cav)
+        second_embeddings = self.model.encode(second_cav)
 
         test_data_transformed = list(
             zip(anchor_embeddings, first_embeddings, second_embeddings))
