@@ -1,6 +1,5 @@
 # > Imports
 # Standard Library
-import csv
 import os
 import random
 from typing import List, Tuple, Union
@@ -12,8 +11,8 @@ from sklearn.metrics import accuracy_score
 from sentence_transformers import SentenceTransformer, losses, InputExample, evaluation
 from sentence_transformers.util import cos_sim
 import torch
-from torch.utils.data import DataLoader
 from torch import Tensor
+from torch.utils.data import DataLoader
 
 # Local
 from utils import contrastive_to_binary
@@ -27,6 +26,8 @@ class StyleEmbeddingModel:
     ----------
     model : SentenceTransformer
         The SentenceTransformer model.
+    name : str
+        The name of the model.
     output_path : str
         The path to the output directory.
     """
@@ -68,8 +69,9 @@ class StyleEmbeddingModel:
                 special_tokens_dict['additional_special_tokens'])
 
             # Resize the token embeddings
-            self.model._first_module().auto_model.resize_token_embeddings(len(self.model.tokenizer))
-            
+            self.model._first_module().auto_model.resize_token_embeddings(
+                len(self.model.tokenizer))
+
         self.name = name
         self.output_path = output_path
 
@@ -94,8 +96,10 @@ class StyleEmbeddingModel:
         epochs : int
             The number of epochs to train the model for.
         """
+
         print(
-            f"Training on {len(train_data)} examples for {epochs} epochs, using a batch size of {batch_size}")
+            f"Training on {len(train_data)} examples for {epochs} epochs,\
+                    using a batch size of {batch_size}")
 
         # Load the train dataset
         train_examples = [InputExample(texts=texts, label=1)
@@ -106,8 +110,6 @@ class StyleEmbeddingModel:
         train_loss = losses.MultipleNegativesRankingLoss(self.model)
 
         # Load the validation dataset
-        #val_examples = [InputExample(texts=texts, label=1)
-        #                for texts in val_data]
         val_data = contrastive_to_binary(val_data)
 
         # Validation split
@@ -207,6 +209,14 @@ class StyleEmbeddingModel:
 
     def _STEL_tasks(self,
                     stel_dir: str):
+        """
+        Run the STEL tasks.
+
+        Parameters
+        ----------
+        stel_dir : str
+            The path to the directory containing the STEL tasks.
+        """
 
         for file in os.listdir(stel_dir):
             if file.endswith(".tsv"):
@@ -230,11 +240,11 @@ class StyleEmbeddingModel:
                 self._predict_STEL(task_data, task_name)
 
                 # list comprehension
-                stel_oc_task_data = [(anchors1[i], alts1[i], anchors2[i]) if correct[i] == 1 
+                stel_oc_task_data = [(anchors1[i], alts1[i], anchors2[i]) if correct[i] == 1
                                      else (anchors1[i], alts2[i], anchors2[i]) for i in range(len(anchors1))]
 
                 # extending list comprehension with the second pairs
-                stel_oc_task_data.extend([(anchors2[i], alts2[i], anchors1[i]) if correct[i] == 1 
+                stel_oc_task_data.extend([(anchors2[i], alts2[i], anchors1[i]) if correct[i] == 1
                                           else (anchors2[i], alts1[i], anchors1[i]) for i in range(len(anchors2))])
 
                 self._predict_STEL_oc(stel_oc_task_data, task_name)
@@ -280,6 +290,17 @@ class StyleEmbeddingModel:
     def _predict_STEL_oc(self,
                          task_data: List[Tuple[Tensor, Tensor, Tensor]],
                          task_name: str):
+        """
+        Use the STEL framework to evaluate the model's ability to separate
+
+        Parameters
+        ----------
+        task_data : List[Tuple[Tensor, Tensor, Tensor]]
+            The data for the task.
+
+        task_name : str
+            The name of the task.
+        """
 
         # Create a list to store the predictions
         predictions = []
@@ -328,13 +349,8 @@ class StyleEmbeddingModel:
         predicted_av = self._predict_cos(
             np.array(first_av), np.array(second_av), threshold)
 
-        # Save the predictions to a csv file
-        with open(f"predictions-{self.name}.csv", "w") as f:
-            writer = csv.writer(f)
-            writer.writerow(["First", "Second", "Actual", "Predicted"])
-
-            for (anchor_text, first_text, second_text), actual, predicted in zip(test_data, actual_av, predicted_av):
-                writer.writerow([first_text, second_text, actual, predicted])
+        first_av_text, second_av_text, _ = zip(
+            *contrastive_to_binary(test_data))
 
         # Get the accuracy of the model
         accuracy_av = accuracy_score(actual_av, predicted_av)

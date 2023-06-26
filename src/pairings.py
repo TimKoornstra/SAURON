@@ -7,10 +7,10 @@ import os
 import pickle
 import random
 import time
+from multiprocessing import Pool, cpu_count
 from typing import Tuple
 
 # Third Party
-from multiprocessing import Pool, cpu_count
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
@@ -354,29 +354,27 @@ def create_pairings(df: pd.DataFrame,
     author_values = authors.values()
     count_anchor_values = count_anchor.values()
 
-    print("==============================")
-    print("       Statistics")
-    print("==============================")
-    print(f"Number of pairings:          {len(pairings):>5}")
-    print(f"Number of authors:           {len(authors):>5}")
-    print(f"Number of conversations:     {len(conversations):>5}")
-    print(f"Maximum utterances per author: {max(author_values):>5}")
-    print(f"Minimum utterances per author: {min(author_values):>5}")
-    print(
-        f"Average utterances per author: {sum(author_values) / len(authors):>5.2f}")
-    print(f"Maximum an anchor occurs:    {max(count_anchor_values):>5}")
-    print(f"Minimum an anchor occurs:    {min(count_anchor_values):>5}")
-    print(
-        f"Average an anchor occurs:    {sum(count_anchor_values) / len(count_anchor):>5.2f}")
-    print("-----------------------------")
-    print("Conversations is the same for")
-    print(f"All:        {conversation_counts['same_conv']:>5}")
-    print(f"Anchor-pos: {conversation_counts['anchorpos_conv']:>5}")
-    print(f"Anchor-neg: {conversation_counts['anchorneg_conv']:>5}")
-    print(f"Pos-neg:    {conversation_counts['posneg_conv']:>5}")
-    print(f"None:       {conversation_counts['none_conv']:>5}")
-    print("-----------------------------")
-    print("==============================")
+    print(f"{'='*30}")
+    print(f"{'Statistics':^30}")
+    print(f"{'='*30}")
+    print(f"{'Number of pairings:':<30}{len(pairings):>10}")
+    print(f"{'Number of authors:':<30}{len(authors):>10}")
+    print(f"{'Number of conversations:':<30}{len(conversations):>10}")
+    print(f"{'Maximum utterances per author:':<30}{max(author_values):>10}")
+    print(f"{'Minimum utterances per author:':<30}{min(author_values):>10}")
+    print(f"{'Average utterances per author:':<30}{sum(author_values) / len(authors):>10.2f}")
+    print(f"{'Maximum an anchor occurs:':<30}{max(count_anchor_values):>10}")
+    print(f"{'Minimum an anchor occurs:':<30}{min(count_anchor_values):>10}")
+    print(f"{'Average an anchor occurs:':<30}{sum(count_anchor_values) / len(count_anchor):>10.2f}")
+    print(f"{'-'*30}")
+    print(f"{'Conversations is the same for':<30}")
+    print(f"{'All:':<30}{conversation_counts['same_conv']:>10}")
+    print(f"{'Anchor-pos:':<30}{conversation_counts['anchorpos_conv']:>10}")
+    print(f"{'Anchor-neg:':<30}{conversation_counts['anchorneg_conv']:>10}")
+    print(f"{'Pos-neg:':<30}{conversation_counts['posneg_conv']:>10}")
+    print(f"{'None:':<30}{conversation_counts['none_conv']:>10}")
+    print(f"{'-'*30}")
+    print(f"{'='*30}")
 
     # Shuffle the pairings
     random.seed(42)

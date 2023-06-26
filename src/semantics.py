@@ -5,7 +5,85 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer, util
 
 # Standard Library
+import os
 import re
+
+
+def load_model(cache_folder: str = ".cache/") -> SentenceTransformer:
+    """
+    Load the paraphrase mining model.
+
+    Parameters
+    ----------
+    cache_folder : str
+        The folder to cache the model in.
+
+    Returns
+    -------
+    SentenceTransformer
+        The model.
+    """
+
+    print("Loading paraphrase mining model...")
+    model = SentenceTransformer("all-mpnet-base-v2", cache_folder=cache_folder)
+    print("Model paraphrase mining loaded.")
+    return model
+
+
+def clean_data(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove bad potential paraphrases from the data.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        The data to clean.
+
+    Returns
+    -------
+    pd.DataFrame
+        The cleaned data.
+    """
+
+    print("Removing bad potential paraphrases...")
+    count = 0
+    for i, row in data.iterrows():
+        if should_remove(row["text"]):
+            data.at[i, "text"] = ""
+            count += 1
+    print(f"Disregarded {count} rows out of {len(data)}")
+    print("Removed.")
+    return data
+
+
+def should_remove(text: str) -> bool:
+    """
+    Check if a text should be removed.
+
+    Parameters
+    ----------
+    text : str
+        The text to check.
+
+    Returns
+    -------
+    bool
+        Whether the text should be removed.
+    """
+
+    lines = text.splitlines()
+    stripped = text.strip()
+    emoji_pattern = re.compile("["
+                               u"\U0001F600-\U0001F64F"
+                               u"\U0001F300-\U0001F5FF"
+                               u"\U0001F680-\U0001F6FF"
+                               u"\U0001F1E0-\U0001F1FF"
+                               u"\U00002702-\U000027B0"
+                               u"\U000024C2-\U0001F251"
+                               "]+", flags=re.UNICODE)
+
+    return any(line.startswith(">") for line in lines)\
+        or emoji_pattern.sub(r"", stripped).strip() == "" or stripped == "."
 
 
 def paraphrase_mining(data: pd.DataFrame,
@@ -19,6 +97,12 @@ def paraphrase_mining(data: pd.DataFrame,
     ----------
     data : pd.DataFrame
         The data to mine for paraphrases.
+    output_path : str, optional
+        The path to save the paraphrases to, by default None
+    output_name : str, optional
+        The name of the output file, by default ""
+    cache_folder : str, optional
+        The folder to cache the model in, by default ".cache/"
 
     Returns
     -------
@@ -26,59 +110,21 @@ def paraphrase_mining(data: pd.DataFrame,
         A DataFrame with the IDs of the sentences that are paraphrases
         and their similarity score.
     """
-    # Check if the paraphrase data already exists
-    if output_path:
-        try:
-            print("Loading paraphrase data...")
-            paraphrases = pd.read_pickle(
-                f"{output_path}/paraphrases/{output_name}-paraphrases.pkl")
-            print("Data loaded.")
-            return paraphrases
-        except FileNotFoundError:
-            pass
 
-    # Load model
-    print("Loading paraphrase mining model...")
-    model = SentenceTransformer(
-        "all-mpnet-base-v2",
-        cache_folder=cache_folder)
-    print("Model paraphrase mining loaded.")
+    if output_path and os.path.exists(f"{output_path}/paraphrases/{output_name}-paraphrases.pkl"):
+        print("Loading paraphrase data...")
+        paraphrases = pd.read_pickle(
+            f"{output_path}/paraphrases/{output_name}-paraphrases.pkl")
+        print("Data loaded.")
+        return paraphrases
 
-    emoji_pattern = re.compile("["
-                               u"\U0001F600-\U0001F64F"  # emoticons
-                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                               u"\U00002702-\U000027B0"
-                               u"\U000024C2-\U0001F251"
-                               "]+", flags=re.UNICODE)
+    model = load_model(cache_folder)
+    data = clean_data(data)
 
-    # We want to remove all lines from the data["text"] that start with
-    # ">" because they are replies to other comments.
-    print("Removing bad potential paraphrases...")
-    count = 0
-
-    # Loop through the data["text"] and remove the lines
-    for i, row in data.iterrows():
-        # Split the text into lines
-        lines = row["text"].splitlines()
-        stripped = row["text"].strip()
-
-        # Check if any line starts with ">"
-        if any(line.startswith(">") for line in lines)\
-                or emoji_pattern.sub(r"", stripped).strip() == ""\
-                or stripped == ".":
-            # Remove the entire text
-            data.at[i, "text"] = ""
-            count += 1
-    
-    print(f"Disregarded {count} rows out of {len(data)}")
-
-    print("Removed.")
-    
     mapping = {i: new_index for new_index, i in enumerate(data.index)}
     texts = [text for text in data["text"].tolist() if text.strip() != ""]
-    mapping = {new_index: mapping[old_index] for new_index, old_index in enumerate(i for i, text in enumerate(data["text"].tolist()) if text.strip() != "")}
+    mapping = {new_index: mapping[old_index] for new_index, old_index in enumerate(
+        i for i, text in enumerate(data["text"].tolist()) if text.strip() != "")}
 
     # Find paraphrases
     print("Finding paraphrases...")
@@ -92,10 +138,11 @@ def paraphrase_mining(data: pd.DataFrame,
     )
     print("Paraphrases found.")
     print(len(all_paraphrases))
-    
+
     # Map the indices in all_paraphrases to their original values
-    all_paraphrases_mapped = [(score, mapping[i], mapping[j]) for score, i, j in all_paraphrases]
-    
+    all_paraphrases_mapped = [(score, mapping[i], mapping[j])
+                              for score, i, j in all_paraphrases]
+
     # Remove paraphrases that are the same sentence or from the same author
     print("Removing duplicates...")
     already_seen = set()

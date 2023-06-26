@@ -12,6 +12,21 @@ from pairings import split_data, create_pairings
 from model import StyleEmbeddingModel
 from utils import get_threshold
 
+# Constants
+TRAIN = "train"
+INTERACTIVE = "interactive"
+EVALUATE = "evaluate"
+VALID_MODES = [TRAIN, INTERACTIVE, EVALUATE]
+
+
+# Error Handling
+class InvalidModeError(Exception):
+    pass
+
+
+class MissingArgumentError(Exception):
+    pass
+
 
 def add_arguments(parser: argparse.ArgumentParser):
     """
@@ -46,89 +61,91 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="The mode to run the script in.\
                                 (default: 'train')")
     parser.add_argument("--model-path", type=str, default=None,
-                        help="The path to the model to use in interactive mode.\
-                                (default: None)")
+                        help="The path to the model to use in\
+                                interactive mode. (default: None)")
 
 
 def training_mode(args):
-    # If the file exists, load the data from the file
-    if os.path.exists(f"{args.path}/preprocessed/{args.data_source}_data.pkl"):
-        df = load_data(source=args.data_source,
-                       path=args.path)
-    else:
-        # Run the preprocessing pipeline
-        df = pipeline(data_source=args.data_source,
+    """
+    Run the training mode.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        The arguments to use for training.
+    """
+    # Create necessary directories if they don't exist
+    os.makedirs(args.path, exist_ok=True)
+    os.makedirs(args.output_path, exist_ok=True)
+    os.makedirs(args.cache_path, exist_ok=True)
+
+    # Load data if it exists, otherwise run the preprocessing pipeline
+    data_file = f"{args.path}/preprocessed/{args.data_source}_data.pkl"
+    df = load_data(source=args.data_source, path=args.path)\
+        if os.path.exists(data_file)\
+        else pipeline(data_source=args.data_source,
                       output_path=args.path,
                       cache_path=args.cache_path)
-
-    # Print some information about the data
-    print("Data information:")
-    print(f"Number of authors: {len(df['author_id'].unique())}")
-    print(f"Number of sentences: {len(df)}")
-    print(
-        f"Number of sentences per author: {len(df) / len(df['author_id'].unique())}")
-    print(
-        f"Max number of sentences per author: {df.groupby('author_id').count()['text'].max()}")
-    print(
-        f"Number of conversations: {len(df['conversation_id'].unique())}")
 
     # Split the data into train, validation, and test sets
     train, val, test = split_data(df=df)
 
-    # Check that the author_id's are non-overlapping
-    assert len(set(train["author_id"]).intersection(
-        set(val["author_id"]))) == 0
+    # Ensure the author_id's are non-overlapping
+    if len(set(train["author_id"]).intersection(set(val["author_id"]))) != 0:
+        raise ValueError(
+            "Train and validation sets have overlapping author_ids.")
 
     # Create the pairings
-    print("Creating pairings...")
+    print("Creating train pairings...")
+    train_pairings = create_pairings(
+        train, output_path=args.path, output_name="train")
+    print("Train pairings created.")
 
-    print("-" * 80)
-    print("Train set:")
-    train_pairings = create_pairings(train,
-                                     output_path=args.path,
-                                     output_name="train")
-                                     
-    print("-" * 80)
-    print("Validation set:")
-    val_pairings = create_pairings(val,
-                                   output_path=args.path,
-                                   output_name="val")
+    print("Creating validation pairings...")
+    val_pairings = create_pairings(
+        val, output_path=args.path, output_name="val")
+    print("Validation pairings created.")
 
-    print("-" * 80)
-    print("Test set:")
-    test_pairings = create_pairings(test,
-                                    output_path=args.path,
-                                    output_name="test")
-
-    print("Pairings created.")
+    print("Creating test pairings...")
+    test_pairings = create_pairings(
+        test, output_path=args.path, output_name="test")
+    print("Test pairings created.")
 
     # Create the model
     model = StyleEmbeddingModel(base_model="roberta-base",
                                 cache_path=args.cache_path,
                                 output_path=args.output_path,
-                                name=f"style-allsemv8-{args.epochs}-{args.batch_size}")
+                                name=f"style-allsemv8-\
+                                        {args.epochs}-{args.batch_size}")
 
     # Train the model
-    print("Training model...")
     model.train(train_data=train_pairings,
                 val_data=val_pairings[:100000],
                 batch_size=args.batch_size,
                 epochs=args.epochs)
-    print("Model trained.")
 
     # Retrieve the optimal cosine threshold for the validation set
     threshold = get_threshold(args.path, model)
 
     # Evaluate the model
-    print("Evaluating model...")
     model.evaluate(test_pairings[:100000],
                    threshold=threshold,
                    stel_dir=f"{args.path}/STEL/")
-    print("Model evaluated.")
 
 
 def interactive_mode(model_path, data_path):
-    # Load the model
+    """
+    Run the interactive mode.
+
+    Parameters
+    ----------
+    model_path : str
+        The path to the model to use.
+    data_path : str
+        The path to the data directory.
+    """
+
+    # Load the model and get the threshold
     model = StyleEmbeddingModel(model_path=model_path)
     threshold = get_threshold(data_path, model)
 
@@ -149,6 +166,16 @@ def interactive_mode(model_path, data_path):
 
 
 def evaluate_mode(model_path, data_path):
+    """
+    Run the evaluation mode.
+
+    Parameters
+    ----------
+    model_path : str
+        The path to the model to use.
+    data_path : str
+        The path to the data directory.
+    """
 
     print("Evaluating model...")
     # Load the model
@@ -174,25 +201,48 @@ def evaluate_mode(model_path, data_path):
     print("Model evaluated.")
 
 
+# Code Duplication
+def check_mode_and_paths(mode: str,
+                         model_path: str,
+                         data_path: str):
+    """
+    Check that the mode and paths are valid.
+
+    Parameters
+    ----------
+    mode : str
+        The mode to run.
+    model_path : str
+        The path to the model to use.
+    data_path : str
+        The path to the data directory.
+    """
+
+    if mode not in VALID_MODES:
+        raise InvalidModeError(
+            f"Invalid mode: {mode}. Valid modes are {VALID_MODES}")
+
+    if mode in [INTERACTIVE, EVALUATE] and model_path is None:
+        raise MissingArgumentError("No model path given.")
+
+    if mode == EVALUATE and data_path is None:
+        raise MissingArgumentError("No data path given.")
+
+
+# Main function
 if __name__ == '__main__':
     # Parse the input arguments
     parser = argparse.ArgumentParser()
     add_arguments(parser)
     args = parser.parse_args()
 
-    # Check that the mode is valid
-    assert args.mode in ["train", "interactive", "evaluate"], "Invalid mode."
+    check_mode_and_paths(args.mode, args.model_path, args.path)
 
-    if args.mode == "train":
+    if args.mode == TRAIN:
         training_mode(args)
 
-    elif args.mode == "interactive":
-        assert args.model_path is not None, "No model path given."
-
+    elif args.mode == INTERACTIVE:
         interactive_mode(args.model_path, args.path)
 
-    elif args.mode == "evaluate":
-        assert args.model_path is not None, "No model path given."
-        assert args.path is not None, "No data path given."
-
+    elif args.mode == EVALUATE:
         evaluate_mode(args.model_path, args.path)
