@@ -65,7 +65,7 @@ def add_arguments(parser: argparse.ArgumentParser):
                                 interactive mode. (default: None)")
 
 
-def training_mode(args):
+def training_mode(args: argparse.Namespace):
     """
     Run the training mode.
 
@@ -133,7 +133,7 @@ def training_mode(args):
                    stel_dir=f"{args.path}/STEL/")
 
 
-def interactive_mode(model_path, data_path):
+def interactive_mode(model_path: str, data_path: str):
     """
     Run the interactive mode.
 
@@ -165,7 +165,7 @@ def interactive_mode(model_path, data_path):
         print(f"Prediction: {prediction[0]}")
 
 
-def evaluate_mode(model_path, data_path):
+def evaluate_mode(model_path: str, data_path: str):
     """
     Run the evaluation mode.
 
@@ -201,7 +201,6 @@ def evaluate_mode(model_path, data_path):
     print("Model evaluated.")
 
 
-# Code Duplication
 def check_mode_and_paths(mode: str,
                          model_path: str,
                          data_path: str):
