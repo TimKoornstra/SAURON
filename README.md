@@ -1,14 +1,16 @@
-# Leveraging Semantics for Style Representation Learning
+# SAURON: a Stylistic AUthorship RepresentatiON model
 
-This project is the implementation of my master's thesis in Artificial Intelligence, titled "Leveraging Semantically Similar Utterances to Enhance Writing Style Embedding Models". The project investigates the effectiveness of incorporating semantically similar utterances into transformer-based architectures for modeling linguistic style. 
+This project is the implementation of my master's thesis in Artificial Intelligence, titled "SAURON: Leveraging Semantically Similar Utterances to Enhance Writing Style Embedding Models". The project investigates the effectiveness of incorporating semantically similar utterances into transformer-based architectures for modeling linguistic style. 
 
-A novel approach was adopted to improve the accuracy and robustness of the style representation model. Semantically similar pairs of utterances, identified using the `all-mpnet-base-v2` model from the `Sentence-Transformers` library, were employed to train the model. The use of these pairs allowed the model to discern and capture subtle stylistic nuances, enhancing its performance over versions of the same model that did not employ any content control. 
+A novel approach is proposed wherein a RoBERTa model is trained on the Authorship Verification (AV) task using semantically similar utterances. These are pairs of utterances that encapsulate the same semantic information but differ in their stylistic expression. This methodology encourages the model to concentrate more on style rather than content, fostering a more discerning representation of stylistic nuances. The training data comprised a wide array of conversations from the online platform Reddit, providing a wide representation of authorship and topics.
 
-Data was drawn from numerous conversations on Reddit, enriching the complexity of writing styles represented in the model. This strategy bolstered the model's robustness and allowed for a more comprehensive evaluation of its ability to capture style. To assess the performance of the models, the STyle EvaLuation (STEL) framework was utilized. 
+To assess the performance of the models, the STyle EvaLuation (STEL) framework was utilized. The results of the STEL evaluation helped ascertain the models' ability to accurately capture writing style and delineate the impact of introducing semantically similar pairings.
 
-The results of the STEL evaluation helped ascertain the models' ability to accurately capture writing style and delineate the impact of introducing semantically similar pairings. The study found that although using semantically similar utterances resulted in substantial improvements over not using any form of content control, relying solely on such utterances as different-author examples was not the most optimal strategy. 
+While incorporating semantically similar utterances greatly improved performance over models without any form of content control, it was discovered that relying solely on semantically similar utterances was not the most efficient approach. Instead, the findings suggested that a combination of this technique with conversation-based sampling of examples could further enhance the models' performance. Additionally, the research underlined various effective strategies for preparing input data, such as maintaining diversity in authorship and topics.
 
-Instead, a combination of this approach with others, such as the conversation-based sampling of different-author examples, showed promise for future research. The investigation also highlighted effective techniques for preparing input data, underscoring the importance of author and topic diversity. These insights contribute to the advancement of style-content disentanglement tasks and pave the way for more nuanced and robust style representations.
+The final model, coined as the SAURON (Stylistic AUthorship RepresentatiON) model, considerably improved upon previous iterations. This advancement contributes to the advancement of style-content disentanglement tasks and paves the way for more nuanced and robust style representations.
+
+The trained model is also available on the Hugging Face Model Hub. You can find it [here](https://huggingface.co/TimKoornstra/SAURON).
 
 ## Getting Started
 
@@ -93,12 +95,12 @@ If you use this project in your research, please cite this repository and the as
 ```bibtex
 @mastersthesis{Koornstra2023,
   author  = {Tim Koornstra},
-  title   = {Leveraging Semantically Similar Utterances to Enhance Writing Style Embedding Models},
+  title   = {SAURON: Leveraging Semantically Similar Utterances to Enhance Writing Style Embedding Models},
   school  = {Utrecht University},
   year    = {2023},
   address = {Utrecht, The Netherlands},
   month   = {June},
-  note    = {Available at: \url{https://github.com/TimKoornstra/style-embeddings}}
+  note    = {Available at: \url{https://github.com/TimKoornstra/SAURON}}
 }
 ```
 

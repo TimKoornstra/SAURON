@@ -137,7 +137,6 @@ def paraphrase_mining(data: pd.DataFrame,
         batch_size=512
     )
     print("Paraphrases found.")
-    print(len(all_paraphrases))
 
     # Map the indices in all_paraphrases to their original values
     all_paraphrases_mapped = [(score, mapping[i], mapping[j])
@@ -156,15 +155,12 @@ def paraphrase_mining(data: pd.DataFrame,
                 paraphrases.append((score, i, j))
                 already_seen.add((i, data["text"].iloc[j].strip()))
     print("Duplicates removed.")
-    print(len(paraphrases))
 
     # Convert the paraphrases to a DataFrame
     paraphrases = pd.DataFrame(
         paraphrases,
         columns=["similarity", "idx_1", "idx_2"]
     )
-
-    print(f"Average similarity: {paraphrases['similarity'].mean():.2f}")
 
     # Save the DataFrame to a pickle file
     if output_path:

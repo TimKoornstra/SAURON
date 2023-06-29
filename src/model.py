@@ -8,7 +8,7 @@ from typing import List, Tuple, Union
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score
-from sentence_transformers import SentenceTransformer, losses, InputExample, evaluation
+from sentence_transformers import SentenceTransformer, losses, InputExample, evaluation, SentencesDataset
 from sentence_transformers.util import cos_sim
 import torch
 from torch import Tensor
@@ -102,23 +102,26 @@ class StyleEmbeddingModel:
                     using a batch size of {batch_size}")
 
         # Load the train dataset
-        train_examples = [InputExample(texts=texts, label=1)
-                          for texts in train_data]
+        train_examples = [InputExample(
+            texts=[row[0], row[1], row[2]]) for row in train_data]
+
+        train_dataset = SentencesDataset(train_examples, self.model)
 
         train_dataloader = DataLoader(
-            train_examples, shuffle=True, batch_size=batch_size)
-        train_loss = losses.MultipleNegativesRankingLoss(self.model)
+            train_dataset, shuffle=True, batch_size=batch_size)
+
+        train_loss = losses.TripletLoss(
+            self.model,
+            triplet_margin=0.5,
+            distance_metric=losses.TripletDistanceMetric.COSINE)
 
         # Load the validation dataset
-        val_data = contrastive_to_binary(val_data)
+        val_anchor, val_pos, val_neg = zip(*val_data)
 
-        # Validation split
-        val_sen1, val_sen2, val_labels = zip(*val_data)
-
-        evaluator = evaluation.BinaryClassificationEvaluator(
-            sentences1=val_sen1,
-            sentences2=val_sen2,
-            labels=val_labels,
+        evaluator = evaluation.TripletEvaluator(
+            sentences1=val_anchor,
+            sentences2=val_pos,
+            labels=val_neg,
             name="val_loss")
 
         warmup_steps = int(len(train_dataloader) * epochs * 0.1)
@@ -164,7 +167,7 @@ class StyleEmbeddingModel:
     def _predict_cos(self,
                      first: Union[str, List[str], np.ndarray, Tensor],
                      second: Union[str, List[str], np.ndarray, Tensor],
-                     threshold: int = 0.5) -> List[int]:
+                     threshold: float = 0.5) -> List[int]:
         """
         Predict whether two sentences are written by the same author based
         on the cosine similarity between their embeddings.
@@ -175,7 +178,7 @@ class StyleEmbeddingModel:
             The first sentence.
         second : Union[str, List[str], np.ndarray, Tensor]
             The second sentence.
-        threshold : int
+        threshold : float
             The threshold to use for the prediction.
 
         Returns
@@ -185,8 +188,8 @@ class StyleEmbeddingModel:
         """
 
         if isinstance(first, str):
-            first = self.model.encode(first, device="cuda")
-            second = self.model.encode(second, device="cuda")
+            first = self.model.encode(first)
+            second = self.model.encode(second)
 
         cosine_similarities = self.similarity(first, second)
         return (cosine_similarities > threshold).int().tolist()
@@ -199,9 +202,9 @@ class StyleEmbeddingModel:
         assert len(anchor) == len(first) == len(second)
 
         if isinstance(anchor, str):
-            anchor = self.model.encode(anchor, device="cuda")
-            first = self.model.encode(first, device="cuda")
-            second = self.model.encode(second, device="cuda")
+            anchor = self.model.encode(anchor)
+            first = self.model.encode(first)
+            second = self.model.encode(second)
 
         A1_S1 = self.similarity(anchor, first)
         A1_S2 = self.similarity(anchor, second)
