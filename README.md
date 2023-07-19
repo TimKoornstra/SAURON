@@ -12,6 +12,8 @@ The final model, coined as the SAURON (Stylistic AUthorship RepresentatiON) mode
 
 The trained model is also available on the Hugging Face Model Hub. You can find it [here](https://huggingface.co/TimKoornstra/SAURON).
 
+The thesis itself can be found in this repository as the `SAURON-thesis.pdf` file.
+
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
